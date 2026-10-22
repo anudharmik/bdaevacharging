@@ -1,0 +1,42 @@
+services:
+  cassandra:
+    image: cassandra:4.1
+    container_name: ev_cassandra
+    restart: unless-stopped
+    ports:
+      # Native transport CQL port exposed for local PySpark and Cassandra driver access
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=EVChargeCluster
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      # Constrain heap for single-node development on laptop/workstation environments
+      - MAX_HEAP_SIZE=1024M
+      - HEAP_NEWSIZE=256M
+    volumes:
+      # Persistent storage volume for Cassandra keyspaces and commit logs
+      - cassandra_data:/var/lib/cassandra
+      # Mount directory for CQL schema initialization scripts
+      - ./cassandra/init-scripts:/init-scripts:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "cqlsh -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES;' || cqlsh -e 'DESCRIBE KEYSPACES;' || exit 1"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    networks:
+      - ev_network
+
+volumes:
+  cassandra_data:
+    name: ev_cassandra_data
+
+networks:
+  ev_network:
+    name: ev_analytics_network
+    driver: bridge

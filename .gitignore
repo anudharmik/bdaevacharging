@@ -1,0 +1,45 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment and secrets (NEVER commit credentials)
+.env
+.env.local
+*.pem
+*.key
+
+# Data directories (keep directory structure via .gitkeep, exclude heavy datasets)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Apache Spark & Hadoop local runtime artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoint/
+
+# Cassandra local data directory if mounted locally
+cassandra-data/
+
+# OS and Editor artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.bak

@@ -1,0 +1,27 @@
+# ==============================================================================
+# Electric Vehicle Charging Station Analytics - Python Dependencies
+# Target Python Version: 3.11 (Recommended for PySpark 3.5.x and Cassandra driver)
+# Note: NumPy is constrained to <2.0.0 to guarantee binary compatibility with PySpark 3.5.x
+# ==============================================================================
+
+# Big Data Processing Engine
+pyspark==3.5.1
+
+# Apache Cassandra Client Driver
+cassandra-driver==3.29.2
+
+# Data Analysis and Formats
+pandas==2.2.2
+numpy>=1.24.4,<2.0.0
+pyarrow>=14.0.0,<17.0.0
+
+# Interactive Dashboard and Visualizations
+streamlit==1.38.0
+plotly==5.24.1
+
+# Configuration & Environment Management
+python-dotenv==1.0.1
+
+# Quality Assurance & Testing
+pytest==8.3.3
+pytest-mock==3.14.0
