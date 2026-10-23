@@ -334,32 +334,32 @@ def main():
 
     # Sidebar Filter Controls
     with st.sidebar:
-        st.markdown("### 🎛️ Interactive Filters")
+        st.markdown("### 🎛️ Filters")
         st.markdown(
             "<p style='font-size: 0.8rem; color: #94a3b8; margin-top: -8px;'>"
-            "Apply multi-dimensional filters. All metrics, charts, and insights dynamically update."
+            "Filter by charger, location, and time. Charts and numbers update automatically."
             "</p>",
             unsafe_allow_html=True,
         )
 
-        charger_labels = {"All": "All Architectures", "AC": "AC (Level 2 / Slow)", "DC": "DC (Fast / Rapid)"}
+        charger_labels = {"All": "All Types", "AC": "AC (Slow / Level 2)", "DC": "DC (Fast / Rapid)"}
         sel_charger_type = st.selectbox(
-            "⚡ Charger Architecture",
+            "⚡ Charger Type",
             options=["All", "AC", "DC"],
             format_func=lambda x: charger_labels.get(x, x),
             index=0,
         )
 
         sel_location = st.selectbox(
-            "📍 Facility / Siting Category",
+            "📍 Location",
             options=["All"] + all_locations,
-            format_func=lambda x: "All Facility Categories" if x == "All" else x.title(),
+            format_func=lambda x: "All Locations" if x == "All" else x.title(),
             index=0,
         )
 
-        st.markdown("<label style='font-size: 0.84rem; font-weight: 500; color: #e2e8f0;'>🕒 Start Hour Window (24h)</label>", unsafe_allow_html=True)
+        st.markdown("<label style='font-size: 0.84rem; font-weight: 500; color: #e2e8f0;'>🕒 Start Time (Hour)</label>", unsafe_allow_html=True)
         sel_hour_range = st.slider(
-            "Session Commencement Hour",
+            "Start Hour",
             min_value=0,
             max_value=23,
             value=(0, 23),
@@ -392,8 +392,8 @@ def main():
         st.markdown(
             f"""
             <div style="font-size: 0.76rem; color: #64748b; line-height: 1.5; margin-top: 8px;">
-                <b>Serving Layer:</b> Apache Cassandra 4.1<br>
-                <b>Keyspace:</b> <code>ev_analytics</code> | Port: <code>9042</code><br>
+                <b>Database:</b> Apache Cassandra<br>
+                <b>Keyspace:</b> <code>ev_analytics</code><br>
                 <b>Status:</b> {"<span style='color: #6ee7b7;'>Connected</span>" if not db_error and overall_data else "<span style='color: #fca5a5;'>Disconnected</span>"}
             </div>
             """,
@@ -406,7 +406,7 @@ def main():
         <div class="app-header-box">
             <div>
                 <h1 class="app-title">⚡ EV Charge Analytics</h1>
-                <p class="app-subtitle">Distributed PySpark Processing & Apache Cassandra Serving Layer with Interactive Filter Engine</p>
+                <p class="app-subtitle">Electric Vehicle Charging Analytics using Apache Spark & Apache Cassandra</p>
                 <div style="margin-top: 6px;">
                     <span class="tech-pill">Apache Spark 3.5.1</span>
                     <span class="tech-pill">Apache Cassandra 4.1</span>
@@ -418,9 +418,8 @@ def main():
                 <div>
                     {"<span class='status-pill-connected'>● Connected to Cassandra</span>" if not db_error and overall_data else "<span class='status-pill-disconnected'>● Cassandra Disconnected</span>"}
                 </div>
-                <div style="color: #64748b; font-size: 0.74rem; margin-top: 5px;">
-                    Serving Keyspace: <b>ev_analytics</b> | Port: <b>9042</b><br>
-                    Data Freshness: <b>{fetch_ts}</b>
+                <div style="color: #64748b; font-size: 0.76rem; margin-top: 5px;">
+                    Keyspace: <b>ev_analytics</b>
                 </div>
             </div>
         </div>
@@ -474,8 +473,8 @@ def main():
         active_hourly = hourly_data
         active_chargers = charger_type_data
         active_locations = location_data
-        data_source_label = "Apache Cassandra 4.1 Serving Layer (Canonical Benchmark Aggregates)"
-        filter_status_text = "All Data Portfolio (No filters applied)"
+        data_source_label = "Cassandra"
+        filter_status_text = "All Charging Sessions (No filters applied)"
     else:
         filtered_df = filter_records(
             session_records_df,
@@ -487,20 +486,20 @@ def main():
         active_hourly = aggregate_hourly_from_df(filtered_df)
         active_chargers = aggregate_chargers_from_df(filtered_df)
         active_locations = aggregate_locations_from_df(filtered_df)
-        data_source_label = "In-Memory Multi-Dimensional Filter Engine (Cleaned Parquet Cache)"
+        data_source_label = "Filtered Data"
 
-        loc_desc = sel_location.title() if sel_location != "All" else "All Facilities"
+        loc_desc = sel_location.title() if sel_location != "All" else "All Locations"
         chr_desc = sel_charger_type if sel_charger_type != "All" else "All Chargers"
         hr_desc = f"{sel_hour_range[0]:02d}:00–{sel_hour_range[1]:02d}:00"
         filter_status_text = (
-            f"Active Filter Slice: <b>{chr_desc}</b> • <b>{loc_desc}</b> • <b>{hr_desc}</b> "
-            f"({format_number(active_kpis['total_sessions'])} sessions, {active_kpis['portfolio_share_pct']}% of portfolio)"
+            f"Showing: <b>{chr_desc}</b> • <b>{loc_desc}</b> • <b>{hr_desc}</b> "
+            f"({format_number(active_kpis['total_sessions'])} sessions, {active_kpis['portfolio_share_pct']}% of total)"
         )
 
     # Dynamic Analytical Insights
     insights = calculate_filtered_insights(active_kpis, active_hourly, active_chargers, active_locations)
 
-    # Filter State & Transparency Banner
+    # Filter State Banner
     st.markdown(
         f"""
         <div class="filter-banner">
@@ -516,9 +515,9 @@ def main():
         st.markdown(
             f"""
             <div class="empty-state-box">
-                <h3 style="color: #f87171; margin-bottom: 8px;">🔍 No Charging Sessions Match Active Criteria</h3>
-                <p>No records found for <b>{sel_charger_type}</b> chargers at <b>{sel_location.title()}</b> between <b>{sel_hour_range[0]:02d}:00 and {sel_hour_range[1]:02d}:00</b>.</p>
-                <p style="font-size: 0.85rem; color: #64748b; margin-top: 10px;">Broaden the start hour slider or select 'All' in the sidebar.</p>
+                <h3 style="color: #f87171; margin-bottom: 8px;">🔍 No Sessions Found</h3>
+                <p>No charging sessions found for <b>{sel_charger_type}</b> chargers at <b>{sel_location.title()}</b> between <b>{sel_hour_range[0]:02d}:00 and {sel_hour_range[1]:02d}:00</b>.</p>
+                <p style="font-size: 0.85rem; color: #64748b; margin-top: 10px;">Try selecting a different time window or reset filters to 'All'.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -530,11 +529,11 @@ def main():
     # -------------------------------------------------------------------------
     tab_overview, tab_hourly, tab_chargers, tab_locations, tab_about = st.tabs(
         [
-            "📊 Overview & KPIs",
-            "⚡ Hourly Demand Profiling",
-            "🔌 Charger Comparison (AC vs DC)",
-            "🏢 Location & Siting Analysis",
-            "ℹ️ Architecture & Provenance",
+            "📊 Overview",
+            "⚡ Hourly Usage",
+            "🔌 AC vs DC",
+            "🏢 Locations",
+            "ℹ️ Project Info",
         ]
     )
 
@@ -543,22 +542,22 @@ def main():
     # =========================================================================
     with tab_overview:
         st.markdown(
-            "<p class='section-desc'>High-level operational performance metrics and 24-hour load profiles. Values dynamically reflect active sidebar filters.</p>",
+            "<p class='section-desc'>Summary of EV charging sessions and 24-hour energy usage. Values change with selected filters.</p>",
             unsafe_allow_html=True,
         )
 
         kpi_c1, kpi_c2, kpi_c3, kpi_c4 = st.columns(4)
         with kpi_c1:
-            share_sub = f"{active_kpis['portfolio_share_pct']}% of portfolio ({portfolio_total_sessions:,})" if not is_default_filter else "100% portfolio volume"
-            render_kpi_card("Charging Sessions", format_number(active_kpis.get("total_sessions")), share_sub)
+            share_sub = f"{active_kpis['portfolio_share_pct']}% of total ({portfolio_total_sessions:,})" if not is_default_filter else "100% of all sessions"
+            render_kpi_card("Total Sessions", format_number(active_kpis.get("total_sessions")), share_sub)
         with kpi_c2:
-            render_kpi_card("Total Energy Delivered", format_energy_kwh(active_kpis.get("total_demand_kwh")), f"{active_kpis.get('total_demand_kwh', 0.0):,.1f} kWh total delivered")
+            render_kpi_card("Total Energy", format_energy_kwh(active_kpis.get("total_demand_kwh")), f"{active_kpis.get('total_demand_kwh', 0.0):,.1f} kWh total")
         with kpi_c3:
-            render_kpi_card("Average Demand / Session", f"{format_number(active_kpis.get('avg_demand_kwh'), 2)} <span style='font-size: 1.05rem; color: #94a3b8;'>kWh</span>", "Sum energy ÷ total sessions")
+            render_kpi_card("Avg Energy / Session", f"{format_number(active_kpis.get('avg_demand_kwh'), 2)} <span style='font-size: 1.05rem; color: #94a3b8;'>kWh</span>", "Average per session")
         with kpi_c4:
             min_dur = active_kpis.get("min_duration_minutes", 0.0)
             max_dur = active_kpis.get("max_duration_minutes", 0.0)
-            render_kpi_card("Average Session Dwell", format_duration_minutes(active_kpis.get("avg_duration_minutes")), f"Observed: {min_dur:.0f}m – {max_dur/60:.1f}h")
+            render_kpi_card("Avg Charging Time", format_duration_minutes(active_kpis.get("avg_duration_minutes")), f"Range: {min_dur:.0f}m to {max_dur/60:.1f}h")
 
         st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
@@ -574,12 +573,12 @@ def main():
                     x=hourly_df["hour_label"],
                     y=hourly_df["total_demand_kwh"],
                     mode="lines+markers",
-                    name="Energy Delivered (kWh)",
+                    name="Energy (kWh)",
                     line=dict(color="#10b981", width=3, shape="spline"),
                     marker=dict(size=6, color="#059669"),
                     fill="tozeroy",
                     fillcolor="rgba(16, 185, 129, 0.12)",
-                    hovertemplate="<b>Start Hour:</b> %{x}<br><b>Energy Demand:</b> %{y:,.1f} kWh<extra></extra>",
+                    hovertemplate="<b>Start Time:</b> %{x}<br><b>Energy:</b> %{y:,.1f} kWh<extra></extra>",
                 )
             )
             if insights["peak_hour"] is not None and insights["peak_demand_kwh"] > 0:
@@ -595,9 +594,9 @@ def main():
                     bordercolor="#ef4444",
                 )
             fig_demand.update_layout(
-                title="<b>24-Hour Energy Demand Profile by Start Hour (kWh)</b>",
-                xaxis_title="Session Start Hour (24h)",
-                yaxis_title="Total Energy Delivered (kWh)",
+                title="<b>24-Hour Energy Usage (kWh)</b>",
+                xaxis_title="Start Hour (00:00 to 23:00)",
+                yaxis_title="Total Energy (kWh)",
                 hovermode="x unified",
                 **PLOTLY_DARK_THEME,
             )
@@ -608,17 +607,17 @@ def main():
                 hourly_df,
                 x="hour_label",
                 y="session_count",
-                title="<b>Session Commencement Frequency by Start Hour</b>",
+                title="<b>Sessions by Start Hour</b>",
                 labels={"hour_label": "Start Hour", "session_count": "Sessions"},
                 color="session_count",
                 color_continuous_scale=["#0e7490", "#06b6d4", "#10b981"],
             )
             fig_sessions.update_layout(coloraxis_showscale=False, hovermode="x unified", **PLOTLY_DARK_THEME)
-            fig_sessions.update_traces(hovertemplate="<b>Start Hour:</b> %{x}<br><b>Sessions Commenced:</b> %{y:,}<extra></extra>")
+            fig_sessions.update_traces(hovertemplate="<b>Start Hour:</b> %{x}<br><b>Sessions:</b> %{y:,}<extra></extra>")
             st.plotly_chart(fig_sessions, use_container_width=True)
 
-        # Dynamic Operational Insights
-        st.markdown("#### 💡 Operational Key Insights (Data-Driven)")
+        # Key Findings
+        st.markdown("#### 💡 Key Findings")
         ins_col1, ins_col2 = st.columns(2)
         peak_hr_str = f"{insights['peak_hour']:02d}:00" if insights["peak_hour"] is not None else "N/A"
         valley_hr_str = f"{insights['valley_hour']:02d}:00" if insights["valley_hour"] is not None else "N/A"
@@ -626,50 +625,46 @@ def main():
 
         with ins_col1:
             render_insight_card(
-                f"⚡ Busiest Start Window: {peak_hr_str}",
-                f"The highest concentration of session initiations within the current filter occurs at <b>{peak_hr_str}</b>, "
-                f"delivering <b>{insights['peak_demand_kwh']:,.1f} kWh</b> across <b>{insights['peak_sessions']:,} sessions</b>. "
-                "Post-commute plug-ins indicate strong candidate hours for time-of-use (ToU) demand-management incentives."
+                f"⚡ Busiest Time: {peak_hr_str}",
+                f"Most drivers start charging around <b>{peak_hr_str}</b>, using <b>{insights['peak_demand_kwh']:,.1f} kWh</b> across <b>{insights['peak_sessions']:,} sessions</b>. "
+                "This evening rush happens when people plug in after work."
             )
             render_insight_card(
-                f"🌙 Off-Peak Valley Window: {valley_hr_str}",
-                f"The lowest session arrival activity is recorded at <b>{valley_hr_str}</b> with "
-                f"<b>{insights['valley_sessions']:,} sessions commenced</b>. Early morning windows represent "
-                "optimal grid reserve capacity for managed overnight fleet charging."
+                f"🌙 Quietest Time: {valley_hr_str}",
+                f"The lowest activity is at <b>{valley_hr_str}</b> with only <b>{insights['valley_sessions']:,} sessions</b>. "
+                "Late night is the best time for charging large fleets without straining the power grid."
             )
 
         with ins_col2:
-            ratio_text = f"<b>{insights['duration_ratio_ac_to_dc']}x longer</b>" if insights["duration_ratio_ac_to_dc"] > 0 else "N/A (single charger type active)"
+            ratio_text = f"<b>{insights['duration_ratio_ac_to_dc']}x longer</b>" if insights["duration_ratio_ac_to_dc"] > 0 else "N/A"
             render_insight_card(
-                "🔋 AC Destination vs. DC Fast Transit Dynamics",
-                f"In this slice, <b>AC chargers</b> represent <b>{insights['ac_sessions']:,} sessions</b> "
-                f"(avg dwell: <b>{insights['ac_avg_duration']:.1f} min</b>). "
-                f"<b>DC Fast chargers</b> account for <b>{insights['dc_sessions']:,} sessions</b> "
-                f"(avg dwell: <b>{insights['dc_avg_duration']:.1f} min</b>). AC dwell is {ratio_text}."
+                "🔋 AC vs DC Chargers",
+                f"<b>AC (slow):</b> {insights['ac_sessions']:,} sessions (avg: {insights['ac_avg_duration']:.1f} min).<br>"
+                f"<b>DC (fast):</b> {insights['dc_sessions']:,} sessions (avg: {insights['dc_avg_duration']:.1f} min).<br>"
+                f"AC charging takes {ratio_text} compared to DC."
             )
             render_insight_card(
-                f"🏢 Primary Siting Category: {top_loc_str}",
-                f"<b>{top_loc_str}</b> sites generate the largest volume in this selection with "
-                f"<b>{insights['top_location_sessions']:,} sessions</b> ({insights['top_location_share_pct']}% of active slice), "
-                "demonstrating high infrastructure utilization."
+                f"🏢 Most Popular Location: {top_loc_str}",
+                f"<b>{top_loc_str}</b> had the most sessions with <b>{insights['top_location_sessions']:,} sessions</b> "
+                f"({insights['top_location_share_pct']}% of this selection)."
             )
 
     # =========================================================================
-    # TAB 2: HOURLY DEMAND PROFILING
+    # TAB 2: HOURLY USAGE
     # =========================================================================
     with tab_hourly:
         st.markdown(
-            "<p class='section-desc'>Deep-dive into hourly demand characteristics across the 24-hour cycle. Hourly metrics group sessions by their <b>commencement (start) hour</b>, reflecting driver arrival behavior rather than continuous instantaneous grid draw.</p>",
+            "<p class='section-desc'>See how charging activity changes hour by hour throughout the day (based on when sessions started).</p>",
             unsafe_allow_html=True,
         )
 
         metric_options = {
-            "Total Energy Delivered (kWh)": "total_demand_kwh",
-            "Charging Session Count": "session_count",
-            "Average Energy per Session (kWh)": "avg_demand_kwh",
-            "Average Session Duration (Minutes)": "avg_duration_minutes",
+            "Total Energy (kWh)": "total_demand_kwh",
+            "Session Count": "session_count",
+            "Avg Energy per Session (kWh)": "avg_demand_kwh",
+            "Avg Duration (Minutes)": "avg_duration_minutes",
         }
-        sel_metric_label = st.selectbox("Select Metric to Analyze Across 24h:", list(metric_options.keys()), index=0)
+        sel_metric_label = st.selectbox("Choose Metric to View Across 24 Hours:", list(metric_options.keys()), index=0)
         selected_metric_col = metric_options[sel_metric_label]
 
         p_hr, p_val, v_hr, v_val = get_metric_peak_valley(active_hourly, selected_metric_col)
@@ -677,10 +672,10 @@ def main():
         pv_c1, pv_c2 = st.columns(2)
         with pv_c1:
             p_hr_str = f"{p_hr:02d}:00" if p_hr is not None else "N/A"
-            render_kpi_card(f"Peak {sel_metric_label}", f"{p_val:,.2f}", f"Observed at Hour: <b>{p_hr_str}</b>", border_left="#ef4444")
+            render_kpi_card(f"Highest {sel_metric_label}", f"{p_val:,.2f}", f"Occurs at: <b>{p_hr_str}</b>", border_left="#ef4444")
         with pv_c2:
             v_hr_str = f"{v_hr:02d}:00" if v_hr is not None else "N/A"
-            render_kpi_card(f"Minimum {sel_metric_label}", f"{v_val:,.2f}", f"Observed at Hour: <b>{v_hr_str}</b>", border_left="#06b6d4")
+            render_kpi_card(f"Lowest {sel_metric_label}", f"{v_val:,.2f}", f"Occurs at: <b>{v_hr_str}</b>", border_left="#06b6d4")
 
         st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
@@ -695,7 +690,7 @@ def main():
                 marker=dict(size=7, color="#0891b2"),
                 fill="tozeroy",
                 fillcolor="rgba(6, 182, 212, 0.12)",
-                hovertemplate="<b>Hour:</b> %{x}<br><b>" + sel_metric_label + ":</b> %{y:,.2f}<extra></extra>",
+                hovertemplate="<b>Time:</b> %{x}<br><b>" + sel_metric_label + ":</b> %{y:,.2f}<extra></extra>",
             )
         )
         if p_hr is not None and p_val > 0:
@@ -712,40 +707,40 @@ def main():
             )
         fig_custom_hourly.update_layout(
             title=f"<b>24-Hour Profile: {sel_metric_label}</b>",
-            xaxis_title="Session Start Hour (00:00 – 23:00)",
+            xaxis_title="Start Hour (00:00 to 23:00)",
             yaxis_title=sel_metric_label,
             hovermode="x unified",
             **PLOTLY_DARK_THEME,
         )
         st.plotly_chart(fig_custom_hourly, use_container_width=True)
 
-        with st.expander("📋 View Complete 24-Hour Breakdown Table"):
+        with st.expander("📋 View 24-Hour Data Table"):
             display_hourly = hourly_df[
                 ["start_hour", "hour_label", "session_count", "total_demand_kwh", "avg_demand_kwh", "avg_duration_minutes"]
             ].rename(
                 columns={
                     "start_hour": "Hour",
-                    "hour_label": "Time Window",
+                    "hour_label": "Time",
                     "session_count": "Sessions",
-                    "total_demand_kwh": "Total Demand (kWh)",
-                    "avg_demand_kwh": "Avg Demand (kWh)",
-                    "avg_duration_minutes": "Avg Dwell (min)",
+                    "total_demand_kwh": "Total Energy (kWh)",
+                    "avg_demand_kwh": "Avg Energy (kWh)",
+                    "avg_duration_minutes": "Avg Time (min)",
                 }
             )
             st.dataframe(display_hourly, use_container_width=True, hide_index=True)
 
     # =========================================================================
-    # TAB 3: CHARGER COMPARISON (AC vs DC)
+    # TAB 3: AC vs DC CHARGERS
     # =========================================================================
     with tab_chargers:
         st.markdown(
-            "<p class='section-desc'>Head-to-head comparison between AC Level 2 (destination/slow) and DC Fast (rapid transit) charging architectures.</p>",
+            "<p class='section-desc'>Compare slow destination chargers (AC) with fast transit chargers (DC).</p>",
             unsafe_allow_html=True,
         )
 
         type_df = pd.DataFrame(active_chargers)
         type_df["type_name"] = type_df["charger_current_type"].apply(
-            lambda t: "AC (Level 2 / Destination)" if t == "AC" else "DC (Fast / Rapid Transit)"
+            lambda t: "AC (Slow / Level 2)" if t == "AC" else "DC (Fast / Rapid)"
         )
 
         ac_row = next((r for r in active_chargers if r["charger_current_type"] == "AC"), None)
@@ -770,27 +765,27 @@ def main():
 
         charger_c1, charger_c2 = st.columns([1, 1])
         with charger_c1:
-            st.subheader("🔌 Architectural Comparison Summary")
+            st.subheader("🔌 Summary Comparison")
             st.markdown(
                 f"""
                 <div style="background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 0.86rem; color: #cbd5e1;">
                         <tr style="border-bottom: 1px solid #374151; color: #94a3b8; font-weight: 600;">
-                            <th style="padding: 6px 0; text-align: left;">Architecture</th>
+                            <th style="padding: 6px 0; text-align: left;">Charger Type</th>
                             <th style="padding: 6px 0; text-align: right;">Sessions</th>
                             <th style="padding: 6px 0; text-align: right;">Total Energy</th>
-                            <th style="padding: 6px 0; text-align: right;">Avg Dwell</th>
-                            <th style="padding: 6px 0; text-align: right;">Avg Demand</th>
+                            <th style="padding: 6px 0; text-align: right;">Avg Time</th>
+                            <th style="padding: 6px 0; text-align: right;">Avg Energy</th>
                         </tr>
                         <tr style="border-bottom: 1px solid #1f2937;">
-                            <td style="padding: 8px 0; font-weight: 600; color: #10b981;">AC Level-2</td>
+                            <td style="padding: 8px 0; font-weight: 600; color: #10b981;">AC (Slow)</td>
                             <td style="text-align: right;">{ac_cnt:,} ({ac_pct:.1f}%)</td>
                             <td style="text-align: right;">{format_energy_kwh(ac_energy)} ({ac_energy_pct:.1f}%)</td>
                             <td style="text-align: right;">{ac_dwell:.1f} min</td>
                             <td style="text-align: right;">{ac_avg_dem:.2f} kWh</td>
                         </tr>
                         <tr>
-                            <td style="padding: 8px 0; font-weight: 600; color: #06b6d4;">DC Rapid</td>
+                            <td style="padding: 8px 0; font-weight: 600; color: #06b6d4;">DC (Fast)</td>
                             <td style="text-align: right;">{dc_cnt:,} ({dc_pct:.1f}%)</td>
                             <td style="text-align: right;">{format_energy_kwh(dc_energy)} ({dc_energy_pct:.1f}%)</td>
                             <td style="text-align: right;">{dc_dwell:.1f} min</td>
@@ -809,15 +804,15 @@ def main():
                 text="session_count",
                 color="charger_current_type",
                 color_discrete_map={"AC": "#10b981", "DC": "#06b6d4"},
-                title="<b>Session Volume Distribution by Architecture</b>",
-                labels={"type_name": "Architecture", "session_count": "Sessions"},
+                title="<b>Sessions by Charger Type</b>",
+                labels={"type_name": "Charger Type", "session_count": "Sessions"},
             )
             fig_type_bar.update_traces(texttemplate="%{text:,}", textposition="outside")
             fig_type_bar.update_layout(showlegend=False, **PLOTLY_DARK_THEME)
             st.plotly_chart(fig_type_bar, use_container_width=True)
 
         with charger_c2:
-            st.subheader("⚡ Energy Delivery & Dwell Duration")
+            st.subheader("⚡ Energy & Charging Speed")
             fig_type_energy = px.bar(
                 type_df,
                 x="type_name",
@@ -825,8 +820,8 @@ def main():
                 text="total_demand_kwh",
                 color="charger_current_type",
                 color_discrete_map={"AC": "#10b981", "DC": "#06b6d4"},
-                title="<b>Total Energy Delivered (kWh) by Architecture</b>",
-                labels={"type_name": "Architecture", "total_demand_kwh": "Total Energy (kWh)"},
+                title="<b>Total Energy Delivered (kWh)</b>",
+                labels={"type_name": "Charger Type", "total_demand_kwh": "Total Energy (kWh)"},
             )
             fig_type_energy.update_traces(texttemplate="%{text:,.0f} kWh", textposition="outside")
             fig_type_energy.update_layout(showlegend=False, **PLOTLY_DARK_THEME)
@@ -834,29 +829,29 @@ def main():
 
             speedup_str = f"{ac_dwell / dc_dwell:.1f}x" if dc_dwell > 0 and ac_dwell > 0 else "N/A"
             render_insight_card(
-                "🚀 Turnaround Velocity Finding",
-                f"DC fast chargers deliver equivalent or higher energy ({dc_avg_dem:.2f} kWh vs {ac_avg_dem:.2f} kWh) "
-                f"in <b>{speedup_str} shorter dwell time</b> ({dc_dwell:.1f} min vs {ac_dwell:.1f} min). "
-                "This confirms DC suitability for en-route highway hubs, while AC excels at residential destination sites."
+                "⚡ Key Takeaway",
+                f"DC fast chargers deliver similar energy in <b>{speedup_str} less time</b> "
+                f"({dc_dwell:.1f} min vs {ac_dwell:.1f} min). "
+                "DC is ideal for highways and quick stops, while AC is best for homes, apartments, and offices where cars stay parked for hours."
             )
 
     # =========================================================================
-    # TAB 4: LOCATION & SITING ANALYSIS
+    # TAB 4: LOCATIONS
     # =========================================================================
     with tab_locations:
         st.markdown(
-            "<p class='section-desc'>Ranking and utilization analysis across facility installation categories. Siting insights guide urban planning and grid interconnect deployment.</p>",
+            "<p class='section-desc'>See which locations have the highest charging demand and usage.</p>",
             unsafe_allow_html=True,
         )
 
         loc_df = pd.DataFrame(active_locations)
         sort_options = {
-            "Session Count (Volume)": ("session_count", "Sessions: %{x:,}"),
-            "Total Energy Delivered (kWh)": ("total_demand_kwh", "Energy: %{x:,.1f} kWh"),
-            "Average Energy per Session (kWh)": ("avg_demand_kwh", "Avg Demand: %{x:.2f} kWh"),
-            "Average Session Duration (Minutes)": ("avg_duration_minutes", "Dwell: %{x:.1f} min"),
+            "Total Sessions": ("session_count", "Sessions: %{x:,}"),
+            "Total Energy (kWh)": ("total_demand_kwh", "Energy: %{x:,.1f} kWh"),
+            "Avg Energy per Session (kWh)": ("avg_demand_kwh", "Avg Energy: %{x:.2f} kWh"),
+            "Avg Charging Time (Minutes)": ("avg_duration_minutes", "Time: %{x:.1f} min"),
         }
-        sel_loc_sort = st.selectbox("Rank Facilities By:", list(sort_options.keys()), index=0)
+        sel_loc_sort = st.selectbox("Rank Locations By:", list(sort_options.keys()), index=0)
         loc_metric_col, hover_template = sort_options[sel_loc_sort]
         loc_df_sorted = loc_df.sort_values(by=loc_metric_col, ascending=True)
 
@@ -867,18 +862,18 @@ def main():
                 x=loc_metric_col,
                 y="location",
                 orientation="h",
-                title=f"<b>Facilities Ranked by {sel_loc_sort}</b>",
-                labels={"location": "Facility Classification", loc_metric_col: sel_loc_sort},
+                title=f"<b>Locations Ranked by {sel_loc_sort}</b>",
+                labels={"location": "Location", loc_metric_col: sel_loc_sort},
                 color=loc_metric_col,
                 color_continuous_scale=["#0e7490", "#06b6d4", "#10b981"],
             )
             fig_loc.update_layout(coloraxis_showscale=False, **PLOTLY_DARK_THEME)
             fig_loc.update_yaxes(showgrid=False)
-            fig_loc.update_traces(hovertemplate="<b>Facility:</b> %{y}<br>" + hover_template + "<extra></extra>")
+            fig_loc.update_traces(hovertemplate="<b>Location:</b> %{y}<br>" + hover_template + "<extra></extra>")
             st.plotly_chart(fig_loc, use_container_width=True)
 
         with loc_c2:
-            st.markdown("#### 📋 Facility Siting Leaderboard")
+            st.markdown("#### 📋 Location Leaderboard")
             table_display = loc_df.sort_values(by="session_count", ascending=False)[
                 ["location", "session_count", "total_demand_kwh", "avg_demand_kwh", "avg_duration_minutes"]
             ].copy()
@@ -888,29 +883,28 @@ def main():
             )
             table_display = table_display.rename(
                 columns={
-                    "location": "Facility Category",
+                    "location": "Location",
                     "session_count": "Sessions",
                     "total_demand_kwh": "Total Energy (kWh)",
-                    "avg_demand_kwh": "Avg kWh",
-                    "avg_duration_minutes": "Avg Dwell (min)",
-                    "share_pct": "Volume Share",
+                    "avg_demand_kwh": "Avg Energy (kWh)",
+                    "avg_duration_minutes": "Avg Time (min)",
+                    "share_pct": "Share",
                 }
             )
             st.dataframe(table_display, use_container_width=True, hide_index=True)
             render_insight_card(
-                "💡 Siting Recommendation",
-                "Public parking areas and residential apartment complexes capture the highest share of sessions "
-                "because vehicles remain stationary for prolonged dwell periods. Utility investments targeting "
-                "overnight Level 2 installations in these areas yield maximal infrastructure utilization."
+                "💡 Location Takeaway",
+                "Public areas and apartment complexes account for the most charging sessions "
+                "because drivers leave their cars parked there for long periods. These are the best places for AC chargers."
             )
 
     # =========================================================================
-    # TAB 5: ARCHITECTURE & PROVENANCE
+    # TAB 5: PROJECT INFO
     # =========================================================================
     with tab_about:
-        st.subheader("ℹ️ System Architecture, Provenance & Data Quality")
+        st.subheader("ℹ️ Project Architecture & Data Info")
         st.markdown(
-            "<p class='section-desc'>End-to-end Big Data engineering architecture from raw CSV ingestion to distributed PySpark ETL and Apache Cassandra serving layer.</p>",
+            "<p class='section-desc'>End-to-end data pipeline from raw CSV data to PySpark processing and Cassandra storage.</p>",
             unsafe_allow_html=True,
         )
 
@@ -923,60 +917,57 @@ def main():
                 [Raw CSV: 72,856 rows]
                          │
                          ▼
-                [Distributed PySpark ETL Engine]
-                  - Schema enforcement & null filtering
-                  - Derived start_hour & duration calculation
-                  - Categorical mapping: AC (Type 0) vs DC (Type 1)
-                  - Filtering invalid transactions (Duration <= 0, Demand <= 0)
+                [PySpark ETL Processing]
+                  - Define explicit schema
+                  - Remove duplicates & invalid rows
+                  - Extract start hour & map AC/DC
                          │
                          ▼
                 [Cleaned Parquet: 72,108 rows]
                          │
                     ┌────┴───────────────────────────┐
                     ▼                                ▼
-                [PySpark Aggregations]   [In-Memory Analytical Cache]
-                  - overall_metrics        - Multi-dimensional filters
-                  - hourly_demand          - Charger × Location × Hour
-                  - charger_type_metrics   - Fast in-memory Pandas slicing
+                [PySpark Aggregations]         [Filtered Data]
+                  - overall_metrics              - Filter by Charger
+                  - hourly_demand                - Filter by Location
+                  - charger_type_metrics         - Filter by Time
                   - location_metrics                 │
                     │                                │
                     ▼                                │
-                [Apache Cassandra 4.1]               │
+                [Apache Cassandra]                   │
                   - Keyspace: ev_analytics           │
-                  - Port: 9042                       │
                     │                                │
                     └────────────────┬───────────────┘
                                      ▼
-                [Streamlit + Plotly Operations Dashboard]
+                [Streamlit + Plotly Dashboard]
                 ```
                 """
             )
             st.markdown(
                 """
-                #### 🗄️ Apache Cassandra Serving Tables
-                1. `ev_analytics.overall_metrics`: Total portfolio sessions, total energy (kWh), averages, and duration bounds.
-                2. `ev_analytics.hourly_demand`: 24 rows partitioned by `start_hour` (0..23) capturing arrival demand profiles.
-                3. `ev_analytics.charger_type_metrics`: Utilization and throughput segmented by AC vs DC chargers.
-                4. `ev_analytics.location_metrics`: Aggregations across 10 facility categories sorted by session volume.
+                #### 🗄️ Cassandra Tables
+                1. `overall_metrics`: Total sessions, total energy, and duration bounds.
+                2. `hourly_demand`: 24 rows showing hourly charging patterns (0..23).
+                3. `charger_type_metrics`: Comparison between AC and DC charging.
+                4. `location_metrics`: Usage across 10 location types.
                 """
             )
 
         with about_c2:
             st.markdown(
                 """
-                #### 📊 Verified Dataset & Cleaning Audit
-                - **Primary Source:** *A dataset for multi-faceted analysis of electric vehicle charging transactions* (Nature Scientific Data, 2024 / IEEE PES Task Force).
-                - **Licensing:** Creative Commons Attribution 4.0 International (CC BY 4.0).
-                - **Raw Transaction Records:** `72,856`
-                - **Cleaned Valid Records:** `72,108`
-                - **Excluded Anomalous Records:** `748` (records with duration $\le 0$, demand $\le 0$, or unparseable timestamps).
-                - **Energy Target:** Delivered energy in kilowatt-hours (kWh).
-                - **Duration Field:** Minutes (calculated as $(EndTime - StartTime)$).
+                #### 📊 Dataset & Cleaning Summary
+                - **Source:** *Nature Scientific Data* (2024) / IEEE PES Task Force.
+                - **Raw Records:** `72,856`
+                - **Clean Records:** `72,108`
+                - **Removed Records:** `748` (invalid durations, zero demand, or duplicates).
+                - **Energy:** Measured in kilowatt-hours (kWh).
+                - **Duration:** Measured in minutes.
 
-                #### ⚠️ Operational Limitations
-                1. **No Station Geographic Coordinates:** The source dataset omits exact latitude and longitude coordinates to protect station privacy; geographic map projections are intentionally not implemented.
-                2. **No Real-Time Battery Telemetry:** Vehicle battery capacity (kWh), initial State-of-Charge (SoC), and ambient battery temperatures are not captured in transaction billing logs.
-                3. **Start Hour Grouping:** Hourly metrics represent sessions aggregated by commencement time, not continuous instantaneous sub-station power flow.
+                #### ⚠️ Important Notes
+                1. **No GPS Coordinates:** Station locations are categorized by type (`apartment`, `hotel`, etc.) without exact latitude/longitude to protect user privacy.
+                2. **No Battery Details:** Battery capacity and state-of-charge are not part of billing records.
+                3. **Start Hour Grouping:** Hourly charts group sessions by when they started.
                 """
             )
 
@@ -985,7 +976,7 @@ def main():
     st.markdown(
         """
         <div style='text-align: center; color: #64748b; font-size: 0.8rem;'>
-            EV Charge Analytics — Distributed Big Data Lab Project | Apache Spark 3.5.1 • Apache Cassandra 4.1 • Streamlit 1.38.0<br>
+            EV Charge Analytics | Apache Spark • Apache Cassandra • Streamlit<br>
             Keyspace: <code>ev_analytics</code> | Verified Records: <code>72,108 sessions</code>
         </div>
         """,
