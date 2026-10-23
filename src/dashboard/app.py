@@ -296,8 +296,11 @@ def main():
     # --------------------------------------------------------------------------
     # Section 2: Hourly Demand Profile (24 Hours)
     # --------------------------------------------------------------------------
-    st.subheader("📈 24-Hour Power Grid Demand Profile")
-    st.caption("Aggregated across 72,108 transactions stored in Cassandra `hourly_demand` table.")
+    st.subheader("📈 24-Hour Energy Demand Profile (By Session Start Hour)")
+    st.caption(
+        "Aggregated across 72,108 transactions stored in Cassandra `hourly_demand` table. "
+        "Displays total energy demand and session frequency grouped by the hour each session commenced."
+    )
 
     hourly_df = pd.DataFrame(hourly_data)
     hourly_df["hour_label"] = hourly_df["start_hour"].apply(lambda h: f"{h:02d}:00")
@@ -317,7 +320,7 @@ def main():
                 marker=dict(size=6, color="#047857"),
                 fill="tozeroy",
                 fillcolor="rgba(16, 185, 129, 0.12)",
-                hovertemplate="<b>Hour:</b> %{x}<br><b>Demand:</b> %{y:,.1f} kWh<extra></extra>",
+                hovertemplate="<b>Start Hour:</b> %{x}<br><b>Demand:</b> %{y:,.1f} kWh<extra></extra>",
             )
         )
         # Highlight peak hour
@@ -326,7 +329,7 @@ def main():
             fig_demand.add_annotation(
                 x=peak_label,
                 y=insights["peak_demand_kwh"],
-                text=f"Peak: {insights['peak_demand_kwh']:,.0f} kWh",
+                text=f"Peak Start Hour: {insights['peak_demand_kwh']:,.0f} kWh",
                 showarrow=True,
                 arrowhead=2,
                 arrowcolor="#dc2626",
@@ -337,9 +340,9 @@ def main():
             )
 
         fig_demand.update_layout(
-            title="<b>Total Energy Demand by Hour (kWh)</b>",
-            xaxis_title="Time of Day (24h)",
-            yaxis_title="Total Energy (kWh)",
+            title="<b>Total Energy Demand by Session Start Hour (kWh)</b>",
+            xaxis_title="Session Start Hour (24h)",
+            yaxis_title="Total Energy Demanded (kWh)",
             plot_bgcolor="#ffffff",
             paper_bgcolor="#ffffff",
             margin=dict(l=40, r=20, t=50, b=40),
@@ -355,8 +358,8 @@ def main():
             hourly_df,
             x="hour_label",
             y="session_count",
-            title="<b>Charging Session Frequency by Hour</b>",
-            labels={"hour_label": "Time of Day", "session_count": "Sessions"},
+            title="<b>Charging Session Frequency by Start Hour</b>",
+            labels={"hour_label": "Session Start Hour", "session_count": "Sessions"},
             color="session_count",
             color_continuous_scale=["#a7f3d0", "#10b981", "#047857"],
         )
@@ -369,7 +372,7 @@ def main():
             yaxis=dict(showgrid=True, gridcolor="#f1f5f9"),
         )
         fig_sessions.update_traces(
-            hovertemplate="<b>Hour:</b> %{x}<br><b>Sessions:</b> %{y:,}<extra></extra>"
+            hovertemplate="<b>Start Hour:</b> %{x}<br><b>Sessions:</b> %{y:,}<extra></extra>"
         )
         st.plotly_chart(fig_sessions, use_container_width=True)
 
@@ -491,7 +494,7 @@ def main():
     # --------------------------------------------------------------------------
     # Section 5: Data-Driven Analytical Insights
     # --------------------------------------------------------------------------
-    st.subheader("💡 Data-Driven Engineering Insights")
+    st.subheader("💡 Data-Driven Analytical Findings")
     st.caption("Dynamically derived from the latest Cassandra query results.")
 
     ins_c1, ins_c2 = st.columns(2)
@@ -500,11 +503,12 @@ def main():
         st.markdown(
             f"""
             <div class="insight-box">
-                <div class="insight-title">⚡ Grid Coincidence Peak at {insights['peak_hour']:02d}:00</div>
+                <div class="insight-title">⚡ Peak Session Start Window at {insights['peak_hour']:02d}:00</div>
                 <div class="insight-desc">
-                    Daily peak charging load surges to <b>{insights['peak_demand_kwh']:,.0f} kWh</b> across 
-                    <b>{insights['peak_sessions']:,} sessions</b> during the 18:00 evening window. 
-                    This directly overlaps with residential cooking and heating peaks, indicating critical demand for time-of-use tariffs.
+                    The highest concentration of session initiations occurs at <b>{insights['peak_hour']:02d}:00</b>, 
+                    accounting for <b>{insights['peak_demand_kwh']:,.0f} kWh</b> across 
+                    <b>{insights['peak_sessions']:,} sessions</b>. In energy research, evening post-commute surges 
+                    are recognized as a key planning factor for time-of-use charging schedules.
                 </div>
             </div>
             """,
@@ -513,10 +517,11 @@ def main():
         st.markdown(
             f"""
             <div class="insight-box">
-                <div class="insight-title">🌙 Off-Peak Grid Capacity Valley at {insights['valley_hour']:02d}:00</div>
+                <div class="insight-title">🌙 Minimum Charging Activity at {insights['valley_hour']:02d}:00</div>
                 <div class="insight-desc">
-                    Nighttime charging drops to only <b>{insights['valley_sessions']:,} active sessions</b> at 03:00.
-                    This represents significant unutilized power grid capacity suitable for overnight EV smart charging programs.
+                    Recorded sessions reach their lowest activity level with only <b>{insights['valley_sessions']:,} sessions</b> 
+                    initiated at <b>{insights['valley_hour']:02d}:00</b>, identifying early morning hours as a potential 
+                    window for off-peak valley-filling charging incentives.
                 </div>
             </div>
             """,
@@ -527,12 +532,12 @@ def main():
         st.markdown(
             f"""
             <div class="insight-box">
-                <div class="insight-title">🔋 Destination (AC) vs. Transit (DC) Charging Dynamics</div>
+                <div class="insight-title">🔋 Destination (AC) vs. Transit (DC) Duration Comparison</div>
                 <div class="insight-desc">
-                    <b>AC Level-2 chargers</b> dominate session volume (<b>{insights['ac_sessions']:,} sessions</b>, 79.6%) 
+                    <b>AC Level-2 chargers</b> account for <b>{insights['ac_sessions']:,} sessions</b> (79.6%) 
                     with an average duration of <b>{insights['ac_avg_duration']:.1f} minutes</b> (~3.0 hrs).
-                    In contrast, <b>DC Fast Chargers</b> provide <b>{insights['duration_ratio_ac_to_dc']}x faster turnover</b> 
-                    (avg <b>{insights['dc_avg_duration']:.1f} minutes</b>).
+                    In comparison, <b>DC Fast Chargers</b> exhibit a <b>{insights['duration_ratio_ac_to_dc']}x lower average session duration</b> 
+                    (averaging <b>{insights['dc_avg_duration']:.1f} minutes</b>).
                 </div>
             </div>
             """,
@@ -541,9 +546,9 @@ def main():
         st.markdown(
             f"""
             <div class="insight-box">
-                <div class="insight-title">🏢 Primary Urban Siting Anchor: {insights['top_location'].title()}</div>
+                <div class="insight-title">🏢 Primary Siting Category: {insights['top_location'].title()}</div>
                 <div class="insight-desc">
-                    The highest utilization category is <b>{insights['top_location']}</b> with 
+                    The highest volume facility classification in this dataset is <b>{insights['top_location']}</b> with 
                     <b>{insights['top_location_sessions']:,} sessions</b> ({insights['top_location_share_pct']}% of total volume), 
                     closely followed by apartment residential complexes.
                 </div>
