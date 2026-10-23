@@ -1,10 +1,24 @@
 """
 PySpark ETL Pipeline for Electric Vehicle (EV) Charging Station Analytics.
 Provides explicit, reproducible data cleaning and core analytical aggregations.
-Designed for clarity and straightforward viva explanation.
+Structured into clear sequential stages designed for straightforward viva explanation.
+
+Stages:
+1. Define explicit schema matching raw transaction records.
+2. Load raw CSV with schema enforcement (avoiding expensive inferSchema scans).
+3. Check and verify missing (null) values.
+4. Clean dataset: deduplication, timestamp parsing, start-hour extraction,
+   AC/DC mapping, and invalid duration/demand filtering.
+5. Compute analytical aggregations:
+   - Overall portfolio summary
+   - 24-hour demand profile
+   - Charger architecture breakdown (AC vs DC)
+   - Facility siting leaderboard (top locations)
+   - Duration bounds by charger type
 """
 
 from typing import Dict, Tuple
+
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     avg,
@@ -28,10 +42,16 @@ from pyspark.sql.types import (
 )
 
 
+# =============================================================================
+# Stage 1: Explicit Schema Definition
+# =============================================================================
+
+
 def get_raw_schema() -> StructType:
     """
-    Explicit schema matching the 13 columns present in the official ChargingRecords.csv.
-    Specifying types prevents expensive schema inference scans and guarantees correct types.
+    Explicit StructType schema matching the 13 columns in ChargingRecords.csv.
+    Specifying types prevents expensive two-pass schema inference scans and
+    guarantees correct data types for distributed PySpark execution.
     """
     return StructType(
         [
@@ -46,14 +66,21 @@ def get_raw_schema() -> StructType:
             StructField("EndTime", StringType(), True),
             StructField("StartDatetime", StringType(), True),
             StructField("EndDatetime", StringType(), True),
-            StructField("Duration", DoubleType(), True),  # Recorded session duration in minutes
-            StructField("Demand", DoubleType(), True),    # Energy delivered in kilowatt-hours (kWh)
+            StructField("Duration", DoubleType(), True),  # Total session dwell in minutes
+            StructField("Demand", DoubleType(), True),    # Total energy delivered in kilowatt-hours (kWh)
         ]
     )
 
 
+# =============================================================================
+# Stage 2: Data Ingestion
+# =============================================================================
+
+
 def load_raw_data(spark: SparkSession, csv_path: str) -> DataFrame:
-    """Loads raw CSV file using an explicit schema with header enabled."""
+    """
+    Loads raw CSV transaction file using the explicit schema with header enabled.
+    """
     return (
         spark.read.option("header", "true")
         .schema(get_raw_schema())
@@ -61,36 +88,48 @@ def load_raw_data(spark: SparkSession, csv_path: str) -> DataFrame:
     )
 
 
+# =============================================================================
+# Stage 3: Data Quality & Null Auditing
+# =============================================================================
+
+
 def count_missing_values(df: DataFrame) -> Dict[str, int]:
-    """Computes null counts across all columns in the DataFrame."""
+    """
+    Computes null counts across all columns in the DataFrame in a single distributed pass.
+    """
     null_exprs = [count(when(col(c).isNull(), c)).alias(c) for c in df.columns]
     row = df.select(null_exprs).first()
     return row.asDict() if row else {}
+
+
+# =============================================================================
+# Stage 4: Cleaning & Feature Engineering
+# =============================================================================
 
 
 def clean_charging_data(df: DataFrame) -> Tuple[DataFrame, Dict[str, int]]:
     """
     Cleans raw charging data conservatively and deterministically.
 
-    Steps:
-    1. Drop exact duplicate rows.
-    2. Parse high-precision timestamps from Day and Time fields.
-    3. Extract charging start hour (0-23) for grid load profiling.
-    4. Map ChargerType (0 -> 'AC', 1 -> 'DC') into a human-readable column.
-    5. Filter out invalid sessions: duration <= 0, demand <= 0, or unparseable timestamps.
+    Transformations:
+    1. Deduplication: drop exact duplicate rows (caused by telemetry re-transmission).
+    2. Timestamp Parsing: combine StartDay and StartTime for second-precision timestamps.
+    3. Start Hour Extraction: extract hour (0-23) from start timestamp for 24h load profiling.
+    4. Categorical Mapping: map numeric ChargerType (0 -> 'AC', 1 -> 'DC').
+    5. Validation Filter: remove invalid records (Duration <= 0, Demand <= 0, or null timestamps).
 
     Returns:
         (cleaned_df, metrics_dict)
     """
     raw_count = df.count()
 
-    # Step 1: Drop exact duplicates
+    # Step 1: Remove exact duplicate rows
     deduped_df = df.dropDuplicates()
     deduped_count = deduped_df.count()
     duplicate_rows_removed = raw_count - deduped_count
 
-    # Step 2: Timestamp parsing (combining StartDay and StartTime gives second-level precision)
-    with_timestamps_df = (
+    # Step 2: Timestamp parsing and feature derivation
+    with_features_df = (
         deduped_df.withColumn(
             "start_timestamp",
             to_timestamp(concat_ws(" ", col("StartDay"), col("StartTime")), "yyyy-MM-dd H:m:s"),
@@ -108,9 +147,8 @@ def clean_charging_data(df: DataFrame) -> Tuple[DataFrame, Dict[str, int]]:
         )
     )
 
-    # Step 3: Conservative validation filter
-    # Valid sessions must have positive duration (> 0 min) and delivered energy (> 0 kWh)
-    cleaned_df = with_timestamps_df.filter(
+    # Step 3: Filter out anomalous sessions (Duration <= 0 or Demand <= 0)
+    cleaned_df = with_features_df.filter(
         (col("Duration") > 0.0)
         & (col("Demand") > 0.0)
         & col("start_timestamp").isNotNull()
@@ -131,13 +169,17 @@ def clean_charging_data(df: DataFrame) -> Tuple[DataFrame, Dict[str, int]]:
     return cleaned_df, metrics
 
 
-# ==============================================================================
-# Analytical Aggregations (Core Business Logic)
-# ==============================================================================
+# =============================================================================
+# Stage 5: Analytical Aggregations (Core Business Metrics)
+# =============================================================================
 
 
 def compute_overall_metrics(cleaned_df: DataFrame) -> DataFrame:
-    """1. Computes overall project KPIs across all validated sessions."""
+    """
+    1. Overall Portfolio Summary:
+       Computes total sessions, total energy demand, average demand, and duration bounds.
+       Stored in Cassandra table: overall_metrics
+    """
     return cleaned_df.select(
         count("*").alias("total_sessions"),
         spark_round(spark_sum("Demand"), 2).alias("total_demand_kwh"),
@@ -149,7 +191,11 @@ def compute_overall_metrics(cleaned_df: DataFrame) -> DataFrame:
 
 
 def compute_hourly_demand(cleaned_df: DataFrame) -> DataFrame:
-    """2. Computes session count and energy demand aggregated by hour of the day."""
+    """
+    2. Hourly Energy Demand Profile (24-Hour Cycle):
+       Groups sessions by start_hour (00:00 to 23:00) to model driver arrival grid demand.
+       Stored in Cassandra table: hourly_demand
+    """
     return (
         cleaned_df.groupBy("start_hour")
         .agg(
@@ -163,7 +209,11 @@ def compute_hourly_demand(cleaned_df: DataFrame) -> DataFrame:
 
 
 def compute_charger_type_metrics(cleaned_df: DataFrame) -> DataFrame:
-    """3. Computes utilization, throughput, and session lengths across AC vs DC chargers."""
+    """
+    3. Charger Architecture Utilization (AC Level 2 vs DC Fast):
+       Compares session volume, total energy throughput, and average dwell time.
+       Stored in Cassandra table: charger_type_metrics
+    """
     return (
         cleaned_df.groupBy("charger_current_type")
         .agg(
@@ -177,7 +227,11 @@ def compute_charger_type_metrics(cleaned_df: DataFrame) -> DataFrame:
 
 
 def compute_top_locations(cleaned_df: DataFrame, limit_n: int = 10) -> DataFrame:
-    """4. Identifies top charging locations by transaction frequency and energy delivery."""
+    """
+    4. Facility Category Siting Leaderboard:
+       Ranks installation environments (apartment, public area, hotel, etc.) by session frequency.
+       Stored in Cassandra table: location_metrics
+    """
     return (
         cleaned_df.groupBy("Location")
         .agg(
@@ -192,7 +246,10 @@ def compute_top_locations(cleaned_df: DataFrame, limit_n: int = 10) -> DataFrame
 
 
 def compute_duration_by_type(cleaned_df: DataFrame) -> DataFrame:
-    """5. Computes summary duration statistics broken down by AC and DC chargers."""
+    """
+    5. Session Duration Bounds by Charger Architecture:
+       Computes min, mean, and max duration across AC and DC charging modes.
+    """
     return (
         cleaned_df.groupBy("charger_current_type")
         .agg(

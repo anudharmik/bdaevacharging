@@ -45,7 +45,7 @@ def main():
 
     if not raw_data_path.exists():
         print(f"[FAIL] Raw dataset not found at: {raw_data_path}")
-        print("       Please download it first as instructed in docs/dataset_spec.md")
+        print("       Please download it first as instructed in README.md")
         sys.exit(1)
 
     print("=" * 80)

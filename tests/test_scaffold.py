@@ -38,8 +38,8 @@ class TestProjectScaffold(unittest.TestCase):
             ".env.example",
             "README.md",
             "scripts/check_env.py",
-            "scripts/check_cassandra.py",
-            "docs/dataset_spec.md",
+            "docs/project_report.md",
+            "docs/viva_questions.md",
         ]
         for rel_path in expected_files:
             f = self.root / rel_path

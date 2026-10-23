@@ -64,7 +64,8 @@ flowchart LR
 │   ├── raw/                   # Raw immutable datasets (e.g., ChargingRecords.csv)
 │   └── processed/             # Cleaned Parquet / intermediary data
 ├── docs/
-│   └── dataset_spec.md        # Comprehensive dataset documentation and schema
+│   ├── project_report.md      # Comprehensive formal project report
+│   └── viva_questions.md      # Single consolidated viva reference, code map & Q&A
 ├── scripts/
 │   ├── check_env.py           # Environment, runtime, and directory verification script
 │   └── check_cassandra.py     # Cassandra TCP and CQL connectivity verification script
@@ -191,11 +192,9 @@ The redesigned dashboard features a **dark charcoal/navy aesthetic** (`#111827`)
 - **Scale**: **72,856 genuine sessions**, 2,337 users, 2,119 chargers.
 - **License**: Creative Commons Attribution 4.0 International (CC BY 4.0).
 - **File Name**: `ChargingRecords.csv` (~7.6 MB).
-- **Documentation**: See [`docs/dataset_spec.md`](docs/dataset_spec.md) for the 16-column schema and download instructions.
-- **Viva Notes**:
-  - [`docs/viva_notes.md`](docs/viva_notes.md): PySpark, DataFrames, ETL pipeline, and grid analytics.
-  - [`docs/cassandra_viva_notes.md`](docs/cassandra_viva_notes.md): Cassandra NoSQL architecture, partition keys, query-driven modeling, and idempotence.
-  - [`docs/dashboard_viva_notes.md`](docs/dashboard_viva_notes.md): Streamlit presentation tier, dual data architecture, interactive filtering, and mathematical formulations.
+- **Documentation & Viva Reference**:
+  - [`docs/project_report.md`](docs/project_report.md): Complete formal BTech project report and system specification.
+  - [`docs/viva_questions.md`](docs/viva_questions.md): Single consolidated viva guide, code navigation map, PySpark & Cassandra walkthroughs, 30 Q&A, and practical demo sequence.
 
 To download the dataset into the project directory:
 ```powershell
@@ -220,7 +219,7 @@ curl.exe -L "https://ndownloader.figshare.com/files/39952252" -o "data/raw/Charg
   - Computed 5 core analytical aggregations (overall KPIs, hourly demand, AC/DC split, top 10 locations, duration stats).
   - Persisted cleaned dataset to Parquet and summary tables to `data/processed/analytics/*.csv`.
   - Created isolated unit tests (`tests/test_etl_pipeline.py`) passing 100%.
-  - Compiled viva preparation notes in `docs/viva_notes.md`.
+  - Compiled viva preparation notes in `docs/viva_questions.md`.
 - [x] **Phase 3: Apache Cassandra Data Modeling & Loading**
   - Designed query-specific CQL schema for 4 analytical tables (`overall_metrics`, `hourly_demand`, `charger_type_metrics`, `location_metrics`).
   - Implemented explicit, parameterized Cassandra client layer in `src/database/cassandra_client.py`.
@@ -229,7 +228,7 @@ curl.exe -L "https://ndownloader.figshare.com/files/39952252" -o "data/raw/Charg
   - Created verification script `scripts/check_cassandra_data.py` asserting 100% parity with source CSVs.
   - Verified idempotence by executing loader twice with unchanged row counts.
   - Added offline unit tests `tests/test_cassandra_mapping.py` passing 100%.
-  - Compiled viva notes in `docs/cassandra_viva_notes.md`.
+  - Compiled viva notes in `docs/viva_questions.md`.
 - [x] **Phase 4: Streamlit & Plotly Analytical Dashboard Redesign**
   - Upgraded dashboard into a modern, responsive EV operations interface (`src/dashboard/app.py`).
   - Implemented interactive multi-dimensional filter engine (Charger Architecture, Facility Siting, 24h Start Hour Window).
@@ -237,7 +236,7 @@ curl.exe -L "https://ndownloader.figshare.com/files/39952252" -o "data/raw/Charg
   - Built 5 operational tabs: Overview & KPIs, Hourly Demand Profiling, Charger Comparison, Location Siting, and Architecture & Provenance.
   - Implemented mathematical formulas for KPIs, weighted averages, and dynamic peak/valley callouts (`src/dashboard/dashboard_helpers.py`).
   - Expanded unit test suite `tests/test_dashboard_helpers.py` (16 tests passing, 32 total suite tests).
-  - Compiled viva notes in `docs/dashboard_viva_notes.md`.
+  - Consolidated all viva notes into `docs/viva_questions.md`.
 - [ ] **Phase 5: Testing, Documentation & Viva Preparation**
   - End-to-end integration test.
   - Performance considerations and architecture presentation slides/notes.
