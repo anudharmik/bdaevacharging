@@ -168,17 +168,19 @@ streamlit run src/dashboard/app.py
 
 ---
 
-## 6. Dashboard Visualizations Guide
+## 6. Dashboard Visualizations & Interactive Filtering Guide
 
-| Visualization | Chart Type | Source Cassandra Table | Business / Grid Insight |
+The redesigned dashboard features a **dark charcoal/navy aesthetic** (`#111827`) with **electric emerald and cyan accents**, powered by a dual architecture:
+- **Serving Layer:** Apache Cassandra 4.1 for canonical portfolio benchmarks (`overall_metrics`, `hourly_demand`, `charger_type_metrics`, `location_metrics`).
+- **Interactive Multi-Dimensional Filter Engine:** In-memory analytical cache of 72,108 cleaned records, supporting instant cross-filtering by **Charger Architecture** (AC/DC), **Facility Category** (10 locations), and **Session Start Hour Window** (00:00 to 23:00).
+
+| Dashboard Section / Tab | Visualization & Features | Primary Data Source | Business & Grid Insights |
 | :--- | :--- | :--- | :--- |
-| **Portfolio KPIs** | Metric Cards | `overall_metrics` | Total sessions (72,108), total energy (1.27 GWh), avg energy (17.6 kWh), avg duration (152.7 min). |
-| **24-Hour Load Profile** | Plotly Spline Line Chart | `hourly_demand` | Displays continuous hourly energy demand; automatically flags the 18:00 evening peak window (118,980 kWh). |
-| **Hourly Transaction Volume** | Plotly Colored Bar Chart | `hourly_demand` | Visualizes morning commute (08:00) and evening surge session frequencies. |
-| **AC vs. DC Split** | Plotly Categorical Bar Chart | `charger_type_metrics` | Quantifies the 79.6% AC destination charging vs. 20.4% DC rapid transit charging breakdown. |
-| **Dwell Time Comparison** | Plotly Bar Chart | `charger_type_metrics` | Proves DC fast chargers achieve 5.0x faster turnaround (36.6 min avg) compared to AC (182.5 min avg). |
-| **Siting Category Ranking** | Plotly Horizontal Bar Chart | `location_metrics` | Interactive sorting by volume, energy, or duration across 10 installation categories (`public area`, `apartment`, etc.). |
-| **Operational Insights** | Highlight Callout Containers | Calculated dynamically | 4 data-driven findings on grid coincidence peaks, off-peak valleys, charger dynamics, and urban siting. |
+| **Tab 1: Overview & KPIs** | 4 Dynamic KPI Cards, 24h Demand Spline Area Chart, Frequency Bar Chart | Cassandra benchmark / Parquet slice | Total sessions, total energy (GWh/kWh), avg demand (kWh/session), avg dwell (min/h), and dynamic peak annotations. |
+| **Tab 2: Hourly Demand Profiling** | Metric Selector (Total Energy, Sessions, Avg Demand, Avg Dwell), 24h Profile, Peak/Valley Cards | Active slice (00:00–23:00) | Identifies the 18:00 evening surge (118,980 kWh) coinciding with residential grid load; recommends off-peak valley filling. |
+| **Tab 3: Charger Comparison** | Head-to-head metrics table, AC vs DC Volume & Energy Bar Charts, Dwell Speedup | Active slice (AC vs DC) | Demonstrates that DC fast chargers achieve 5.0x faster vehicle turnaround (36.6 min vs. 182.5 min for AC). |
+| **Tab 4: Location & Siting Analysis** | Ranking Selector (Volume, Energy, Avg Demand, Dwell), Horizontal Bar Chart, Leaderboard | Active slice (10 categories) | Evaluates infrastructure utilization; proves public parking and residential apartment complexes drive >38% of total volume. |
+| **Tab 5: Architecture & Provenance** | Pipeline diagram, Cassandra CQL table reference, Cleaning audit summary | Metadata & system audit | Verifies 72,856 raw records $\to$ 72,108 clean records; documents privacy constraints (no GPS) and start-hour methodology. |
 
 ---
 
@@ -193,7 +195,7 @@ streamlit run src/dashboard/app.py
 - **Viva Notes**:
   - [`docs/viva_notes.md`](docs/viva_notes.md): PySpark, DataFrames, ETL pipeline, and grid analytics.
   - [`docs/cassandra_viva_notes.md`](docs/cassandra_viva_notes.md): Cassandra NoSQL architecture, partition keys, query-driven modeling, and idempotence.
-  - [`docs/dashboard_viva_notes.md`](docs/dashboard_viva_notes.md): Streamlit presentation tier, Plotly interactivity, and database caching.
+  - [`docs/dashboard_viva_notes.md`](docs/dashboard_viva_notes.md): Streamlit presentation tier, dual data architecture, interactive filtering, and mathematical formulations.
 
 To download the dataset into the project directory:
 ```powershell
@@ -228,13 +230,13 @@ curl.exe -L "https://ndownloader.figshare.com/files/39952252" -o "data/raw/Charg
   - Verified idempotence by executing loader twice with unchanged row counts.
   - Added offline unit tests `tests/test_cassandra_mapping.py` passing 100%.
   - Compiled viva notes in `docs/cassandra_viva_notes.md`.
-- [x] **Phase 4: Streamlit & Plotly Analytical Dashboard**
-  - Implemented modern interactive dashboard in `src/dashboard/app.py` with emerald EV theme.
-  - Pure Cassandra data connection via `load_data_from_cassandra()` with 60-second TTL caching.
-  - Added 4 KPI cards, 24-hour demand spline chart, session frequency bar chart, AC vs. DC comparisons, and location category rankings.
-  - Implemented dynamic data-driven insight calculations in `src/dashboard/dashboard_helpers.py`.
-  - Added unit test suite `tests/test_dashboard_helpers.py` (21/21 total project tests passing).
-  - Visually inspected rendered browser interface via browser subagent with screenshot verification.
+- [x] **Phase 4: Streamlit & Plotly Analytical Dashboard Redesign**
+  - Upgraded dashboard into a modern, responsive EV operations interface (`src/dashboard/app.py`).
+  - Implemented interactive multi-dimensional filter engine (Charger Architecture, Facility Siting, 24h Start Hour Window).
+  - Designed dual architecture: Apache Cassandra 4.1 serving layer for canonical benchmarks + in-memory Parquet cache for dynamic multi-dimensional cross-filtering.
+  - Built 5 operational tabs: Overview & KPIs, Hourly Demand Profiling, Charger Comparison, Location Siting, and Architecture & Provenance.
+  - Implemented mathematical formulas for KPIs, weighted averages, and dynamic peak/valley callouts (`src/dashboard/dashboard_helpers.py`).
+  - Expanded unit test suite `tests/test_dashboard_helpers.py` (16 tests passing, 32 total suite tests).
   - Compiled viva notes in `docs/dashboard_viva_notes.md`.
 - [ ] **Phase 5: Testing, Documentation & Viva Preparation**
   - End-to-end integration test.

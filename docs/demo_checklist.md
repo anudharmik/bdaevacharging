@@ -45,11 +45,11 @@ Demonstrate automated testing across all pipeline components.
 .\.venv\Scripts\pytest.exe tests/
 ```
 *What to highlight to examiner:*
-- **21 passed tests** covering:
+- **32 passed tests** covering:
   - Project directory structure & config validation
   - In-memory PySpark DataFrame ETL transformations
   - Cassandra offline data mapping & type conversions
-  - Dashboard formatting & dynamic insight calculators
+  - Multi-dimensional filtering, weighted average calculation, duration bounds, and dynamic peak/valley calculators
 
 ---
 
@@ -57,41 +57,42 @@ Demonstrate automated testing across all pipeline components.
 ```powershell
 .\.venv\Scripts\streamlit.exe run src/dashboard/app.py --server.port 8501
 ```
-Open `http://localhost:8501` in your browser. Point out the top-right status badge: `🟢 Connected to Cassandra | Keyspace: ev_analytics | Port: 9042`.
+Open `http://localhost:8501` in your browser. Point out the top-right status badge: `🟢 Connected to Cassandra | Serving Keyspace: ev_analytics | Port: 9042`.
 
 ---
 
-### Step 5: Explain the 4 KPI Cards
+### Step 5: Explain the 4 Primary KPI Cards & Dual Data Architecture
 Point to the executive metric cards:
 1. **Total Charging Sessions:** `72,108` sessions (verified commercial transactions).
 2. **Total Energy Delivered:** `1.27 GWh (1,267,066 kWh)`.
-3. **Average Energy / Session:** `17.6 kWh` (typical passenger vehicle charge amount).
-4. **Average Dwell Time:** `2h 33m (152.7 min)`.
+3. **Average Energy / Session:** `17.57 kWh` (typical passenger vehicle charge amount).
+4. **Average Dwell Time:** `2h 33m (152.7 min)` (observed range: 1 min to 26.2 hours).
+
+*Highlight the Dual Architecture*:
+- Default view is served with sub-second latency from **Apache Cassandra 4.1**.
+- Interactive cross-filtering runs via an in-memory analytical cache of the 72,108 cleaned records from Parquet.
 
 ---
 
-### Step 6: Demonstrate 24-Hour Energy Demand Profile
-Hover over the Plotly line chart and bar chart:
-- Point out the red callout marker: **Peak: 118,980 kWh at 18:00**.
-- Explain: Sessions are grouped by **session start hour**. The 18:00 (6:00 PM) evening surge corresponds to post-commute plug-ins.
-- Point out the night valley at **03:00 (133 sessions)** as prime capacity for off-peak valley-filling tariffs.
+### Step 6: Demonstrate Interactive Multi-Dimensional Filtering
+Show the evaluator how changing the sidebar controls dynamically updates all numbers, charts, and insights:
+1. **Filter by Charger Type:** Select `DC (Fast / Rapid)`:
+   - Notice sessions drop to **14,710** (20.4% of portfolio).
+   - Average dwell immediately updates to **36.6 minutes**.
+2. **Filter by Facility Category:** Select `Apartment`:
+   - Shows residential charging profile.
+3. **Filter by Start Hour Window:** Drag slider to `16:00 – 20:00`:
+   - Highlights evening peak load concentration.
+4. **Reset Filters:** Click `↺ Clear Cache & Refresh` or select `All` to restore the full portfolio view.
 
 ---
 
-### Step 7: Compare AC vs. DC Charger Architecture
-Click between the two tabs under *AC vs. DC Charger Architecture*:
-- **Tab 1 (Session & Energy Split):** AC Level-2 represents **79.6%** of sessions, serving destination charging.
-- **Tab 2 (Dwell Time):** Show the duration difference—DC fast chargers average **36.6 minutes**, demonstrating a **5.0x lower average session duration** compared to AC (182.5 min).
-
----
-
-### Step 8: Demonstrate Interactive Location Sorting
-Scroll to *Siting & Location Categories*:
-- Use the dropdown `Sort Locations By:` to toggle between:
-  1. *Session Count (Volume)*
-  2. *Total Energy Delivery (kWh)*
-  3. *Average Duration (Minutes)*
-- Explain that `public area` (13,952 sessions) and `apartment` complexes (13,913 sessions) dominate total demand, informing commercial charger placement.
+### Step 7: Explore the 5 Operational Tabs
+1. **📊 Overview & KPIs:** 24h demand profile spline and arrival frequency bar chart with peak callouts.
+2. **⚡ Hourly Demand Profiling:** Metric selector toggling between Total kWh, Sessions, Avg Demand, and Avg Dwell, with dynamic peak & valley cards.
+3. **🔌 Charger Comparison:** Head-to-head table showing DC chargers achieve **5.0x faster turnaround** (36.6 min vs. 182.5 min for AC).
+4. **🏢 Location & Siting Analysis:** Siting leaderboard sortable by volume, energy, avg demand, or avg dwell across all 10 categories.
+5. **ℹ️ Architecture & Provenance:** End-to-end pipeline flow diagram, Cassandra schema reference, and dataset provenance audit.
 
 ---
 

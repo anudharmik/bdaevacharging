@@ -1,103 +1,147 @@
 # Viva Examination Notes & Technical Guide: Interactive Dashboard
 
-This document provides clear, viva-ready explanations of the presentation tier, Streamlit framework, Plotly visualizations, data caching mechanisms, and how the web dashboard interfaces with Apache Cassandra.
+This document provides clear, viva-ready explanations of the presentation tier, Streamlit framework, Plotly visualizations, data caching mechanisms, interactive filtering architecture, and how the web dashboard interfaces with Apache Cassandra and the underlying cleaned analytical dataset.
 
 ---
 
-## 1. Presentation Tier Architecture
+## 1. Presentation Tier & Dual Data Architecture
 
 ### What is the role of Streamlit in this Big Data project?
 - **Streamlit** is a Python-native web application framework designed for rapid development of data science and analytical dashboards.
 - In our project architecture:
-  $$\text{Raw CSV} \xrightarrow{\text{PySpark}} \text{Analytics CSVs} \xrightarrow{\text{DataStax Driver}} \text{Apache Cassandra} \xrightarrow{\text{CQL SELECT}} \text{Streamlit / Plotly}$$
+  $$\text{Raw CSV (72,856)} \xrightarrow{\text{PySpark ETL}} \text{Cleaned Parquet (72,108)} \xrightarrow{\text{PySpark Agg}} \text{CSVs} \xrightarrow{\text{DataStax Driver}} \text{Cassandra (Serving Layer)} \xrightarrow{\text{CQL SELECT}} \text{Streamlit / Plotly}$$
 - **Key Viva Distinction**:
-  - The dashboard **does not connect to Apache Spark**. Spark is an offline/batch compute engine.
+  - The dashboard **does not connect directly to Apache Spark** during rendering. Spark is an offline/batch compute engine.
   - The dashboard connects **directly to Apache Cassandra** via port `9042`. Cassandra acts as the low-latency operational serving database, allowing the dashboard to fetch pre-aggregated metrics in single-digit milliseconds without launching heavy Spark distributed tasks.
 
 ---
 
-### What is Plotly and why is it used over Matplotlib or Seaborn?
-- **Matplotlib & Seaborn**: Produce static raster images (PNG/JPEG). Users cannot zoom, hover over data points to inspect exact values, or filter series dynamically.
-- **Plotly**: Generates client-side **interactive JavaScript visualizations** (WebGL/D3.js). When hovering over the 24-hour load curve, users see exact timestamps and demand figures (`118,980 kWh at 18:00`). Plotly charts are fully responsive and fit desktop or mobile displays cleanly.
+### What is the Dual Data Architecture (Cassandra Serving + In-Memory Filter Engine)?
+1. **Canonical Serving Layer (Apache Cassandra 4.1)**:
+   - Stores pre-aggregated benchmark metrics:
+     - `overall_metrics` (1 row)
+     - `hourly_demand` (24 rows, 00:00 to 23:00)
+     - `charger_type_metrics` (2 rows: AC, DC)
+     - `location_metrics` (10 rows: facility categories)
+   - Used for the full portfolio overview and baseline metrics.
+2. **Interactive Slice Engine (Cleaned Parquet Cache)**:
+   - Contains 72,108 validated session records (`Demand`, `Duration`, `charger_current_type`, `Location`, `start_hour`).
+   - Cached in memory using `@st.cache_data(ttl=300)` (occupies only ~8.0 MB in RAM).
+   - Allows instant, multi-dimensional cross-filtering across any combination of:
+     - Charger Architecture: All, AC, DC
+     - Facility Siting Category: All or 10 specific categories
+     - Session Commencement Hour Window: 00:00 to 23:00 (slider or presets)
+
+### Why is this dual approach architecturally sound and honest?
+- **Viva Examiner Question**: *"Why don't you do multi-dimensional filtering directly in Cassandra?"*
+- **Examiner Answer**:
+  - In Cassandra, data modeling is **query-driven**. The four core tables are pre-aggregated single-dimensional projections:
+    - `hourly_demand` is grouped by `start_hour` only (no charger type or location column).
+    - `charger_type_metrics` is grouped by `charger_current_type` only.
+    - `location_metrics` is grouped by `location` only.
+  - If a user asks: *"Show me DC fast charging at apartment complexes between 16:00 and 20:00"*, Cassandra's pre-aggregated tables do not have the 3-way intersection columns.
+  - Rather than creating an overly complex new database schema or falsely claiming that aggregate tables support 3-way cross-filtering, the dashboard honestly and efficiently reads from the cleaned session-level Parquet cache in memory.
+  - The dashboard explicitly labels the source:
+    - Default state: `Source: Apache Cassandra 4.1 Serving Layer (Canonical Benchmark Aggregates)`
+    - Filtered slice: `Source: In-Memory Multi-Dimensional Filter Engine (Cleaned Parquet Cache)`
 
 ---
 
-## 2. Cassandra Data Access & Caching Strategy
+## 2. Interactive Filtering & Mathematical Integrity
 
-### How does the dashboard retrieve data from Cassandra?
-The dashboard uses the DataStax Python driver (`cassandra-driver==3.29.2`) inside `load_data_from_cassandra()`:
-```python
-cluster, session = get_cassandra_session()
-overall = fetch_overall_metrics(session)      # SELECT FROM overall_metrics WHERE metric_id = 'overall'
-hourly = fetch_hourly_demand(session)         # SELECT FROM hourly_demand (24 rows)
-charger_types = fetch_charger_type_metrics(session)  # SELECT FROM charger_type_metrics (2 rows)
-locations = fetch_location_metrics(session)   # SELECT FROM location_metrics (10 rows)
-```
-Total records transferred across the network: **37 rows**.
-Query execution time: **< 15 milliseconds**.
+### What filters are implemented?
+1. **Charger Architecture**: All, AC (Level 2 / Slow), DC (Fast / Rapid).
+2. **Facility / Siting Category**: All Facilities or 10 specific categories (`apartment`, `public area`, `hotel`, `resort`, `company`, etc.).
+3. **Session Commencement Hour**: 00:00 to 23:00 slider with quick presets (`All 24h`, `Peak (16-20h)`, `Night (22-06h)`).
+4. **Metric Selector (Tab 2)**: Total Energy (kWh), Session Count, Average Energy (kWh), Average Duration (min).
+5. **Location Sorting Selector (Tab 4)**: Rank facilities by Volume, Total Energy, Average Demand, or Average Dwell.
 
----
-
-### Why is `@st.cache_data(ttl=60)` used?
-- Streamlit reruns the entire Python script from top to bottom on every user interaction (e.g., clicking a button, sorting a select box).
-- Without caching, every user click would execute 4 network queries to the Cassandra cluster.
-- `@st.cache_data(ttl=60)` caches the query result in memory for 60 seconds:
-  - If a user changes a dropdown or re-sorts a chart within 60 seconds, the dashboard renders instantly from RAM.
-  - The `🔄 Refresh Data` button calls `st.cache_data.clear()` to force an immediate reload from Cassandra.
-
----
-
-### How is database reliability handled?
-1. **No Silent Fallbacks**: If the Cassandra container is stopped, the application displays a prominent error banner with troubleshooting commands (`docker compose up -d`). It never secretly falls back to CSV files, ensuring integrity.
-2. **Empty Table Detection**: If Cassandra is reachable but tables are empty, it alerts the user to run `python scripts/load_cassandra.py`.
+### How are KPIs and averages calculated? (Mathematical Rigor)
+- **Total Sessions ($N$)**:
+  $$N = \sum_{i=1}^M 1$$
+- **Total Delivered Energy ($E$)**:
+  $$E = \sum_{i=1}^N \text{Demand}_i \quad (\text{kWh})$$
+- **Average Energy Demand per Session ($\bar{E}$)**:
+  $$\bar{E} = \frac{E}{N} = \frac{\sum_{i=1}^N \text{Demand}_i}{N} \quad (\text{kWh/session})$$
+  *(Calculated strictly as sum of energy divided by session count. We never compute an unweighted average of averages, avoiding Simpson's paradox).*
+- **Average Session Duration ($\bar{D}$)**:
+  $$\bar{D} = \frac{\sum_{i=1}^N \text{Duration}_i}{N} \quad (\text{minutes})$$
+- **AC / DC Volume Distribution**:
+  $$\text{Share}_{\text{AC}} = \frac{N_{\text{AC}}}{N} \times 100\%, \quad \text{Share}_{\text{DC}} = \frac{N_{\text{DC}}}{N} \times 100\%$$
+- **Active Slice Share of Full Portfolio**:
+  $$\text{Portfolio Share} = \frac{N_{\text{slice}}}{72,108} \times 100\%$$
+- **Empty Filter Handling**:
+  - If a filter combination has 0 matching records (e.g., DC chargers at camping sites at 03:00), the dashboard displays a clear empty-state callout rather than misleading zero-division errors or broken charts.
 
 ---
 
 ## 3. Explaining Dashboard Visualizations in a Viva
 
-### 1. KPI Cards (Top Banner)
-- **Total Sessions (72,108)**: Number of verified commercial transactions after conservative cleaning (dropping 13 duplicates and 735 non-positive duration anomalies).
-- **Total Energy (1.27 GWh / 1,267,066 kWh)**: Scale of electrical energy delivered by the charging network over 12 months.
-- **Average Energy / Session (17.6 kWh)**: Typical battery top-up amount for passenger EVs.
-- **Average Duration (152.7 min / ~2h 33m)**: Mean connected dwell time across all charger locations.
+### Tab 1: Overview & KPIs
+- **4 Primary Metric Cards**:
+  - Total Sessions, Total Energy (with GWh/MWh scaling), Average Demand (kWh), and Average Dwell (Hours & Minutes, plus min/max observed).
+- **24-Hour Energy Demand Profile**:
+  - Continuous spline curve showing delivered kWh by session start hour.
+  - Automatically flags the peak demand hour (`18:00` with `118,980 kWh` in default portfolio).
+- **Session Commencement Frequency**:
+  - Bar chart showing transaction counts across 24 hours.
+- **Dynamic Insight Cards**:
+  - Busiest start window, off-peak night valley, AC vs DC dwell ratio, and primary siting category.
 
----
+### Tab 2: Hourly Demand Profiling
+- **Metric Selector**: Toggle between Total kWh, Session Count, Avg Demand, or Avg Dwell across 24h.
+- **Dynamic Peak & Minimum Callouts**: Derived dynamically using `get_metric_peak_valley()`.
+- **Complete 24-Hour Dataset Table**: Tabular breakdown with formatting.
+- **Methodological Note for Examiners**:
+  - *Start Hour vs. Instantaneous Power*: The hourly metrics aggregate transactions by the time the vehicle **plugged in** (commenced charging). This models driver arrival behavior, not instantaneous sub-station power flow.
 
-### 2. 24-Hour Grid Demand Curve (Hourly Profile)
-- **The Graph**: Line chart showing total kWh consumption from hour `00:00` to `23:00`.
-- **Engineering Finding**:
-  - **Peak Hour**: Occurs at **18:00 (6:00 PM)** with **6,435 sessions** consuming **118,980 kWh**.
-  - **Coincidence Factor**: This peak coincides directly with peak domestic residential energy consumption (lighting, cooking, HVAC).
-  - **Grid Solution**: Utility companies use this finding to implement time-of-use (TOU) tariffs—charging higher electricity rates at 18:00 to incentivize drivers to delay charging until off-peak hours (e.g., 03:00 valley).
+### Tab 3: Charger Comparison (AC vs DC)
+- **AC Level 2 (Destination)**:
+  - Accounts for **79.6% (57,398 sessions)** of total volume.
+  - Mean duration is **182.5 minutes (~3.0 hours)**.
+  - Ideal for *destination charging* (residential apartments, office workplaces, hotels).
+- **DC Fast Charging (Transit)**:
+  - Accounts for **20.4% (14,710 sessions)** of volume.
+  - Mean duration is **36.6 minutes** (delivering 19.2 kWh).
+  - **5.0x faster turnaround** than AC, designed for *en-route highway corridors* and quick turnaround.
 
----
+### Tab 4: Location & Siting Analysis
+- Ranks 10 facility categories (`public area`, `apartment`, `resort`, `hotel`, `company`, etc.).
+- Sortable by volume, energy, avg demand, or avg dwell.
+- **Top 2 Categories**: `public area` (13,952 sessions) and `apartment` (13,913 sessions) capture over 38% of all charging volume.
+- **Urban Planning Finding**: Overnight residential Level 2 charging and public parking hubs yield maximal infrastructure utilization.
 
-### 3. AC Level 2 vs. DC Fast Charger Comparison
-- **AC Chargers**:
-  - Account for **79.6% (57,398 sessions)** of total charging.
-  - Average duration is **182.5 minutes (~3.0 hours)**.
-  - Ideal for *destination charging* (apartments, hotels, offices) where cars sit parked for extended periods.
-- **DC Fast Chargers**:
-  - Account for **20.4% (14,710 sessions)**.
-  - Average duration is only **36.6 minutes** (delivering 19.2 kWh).
-  - **5.0x faster throughput** than AC, designed for *en-route highway charging* and quick vehicle turnaround.
-
----
-
-### 4. Siting & Location Categories
-- Evaluates 10 facility categories (`public area`, `apartment`, `resort`, `hotel`, `company`, etc.).
-- **Top 2 Categories**: `public area` (13,952 sessions) and `apartment` (13,913 sessions) generate over 38% of all charging volume.
-- **Urban Planning Finding**: Siting EV chargers in residential apartment complexes and public parking areas maximizes infrastructure utilization.
+### Tab 5: Architecture & Provenance
+- Flow diagram of the end-to-end Big Data pipeline.
+- Cassandra CQL schema specifications.
+- Verified cleaning audit: 72,856 raw records $\to$ 72,108 clean records (748 anomalous records removed).
+- Documented limitations (no GPS coordinates, no battery SoC, start-hour vs instantaneous power flow).
 
 ---
 
 ## 4. Summary Table for Viva Examiners
 
-| Component | Technology | Source Table | Query Frequency |
+| Component | Technology | Primary Source | Query / Processing Frequency |
 | :--- | :--- | :--- | :--- |
-| **KPIs** | Streamlit Metric Containers | `overall_metrics` | Cached (60s TTL) |
-| **24h Load Curve** | Plotly Scatter / Area Line | `hourly_demand` | Cached (60s TTL) |
-| **Session Frequency** | Plotly Express Bar Chart | `hourly_demand` | Cached (60s TTL) |
-| **AC vs DC Split** | Plotly Categorical Bar Chart | `charger_type_metrics` | Cached (60s TTL) |
-| **Location Ranking** | Plotly Horizontal Bar Chart | `location_metrics` | Cached (60s TTL) |
-| **Dynamic Findings** | Pure Python Calculations | Derived from query results | Computed per refresh |
+| **Portfolio KPIs** | Streamlit Metric Containers | `overall_metrics` (Cassandra) / Parquet slice | Cached (300s TTL) |
+| **24h Load Curve** | Plotly Spline / Area Line | `hourly_demand` (Cassandra) / Parquet slice | Cached (300s TTL) |
+| **Session Frequency** | Plotly Colored Bar Chart | `hourly_demand` (Cassandra) / Parquet slice | Cached (300s TTL) |
+| **AC vs DC Comparison** | Plotly Grouped Bar Chart | `charger_type_metrics` / Parquet slice | Cached (300s TTL) |
+| **Location Leaderboard** | Plotly Horizontal Bar Chart | `location_metrics` / Parquet slice | Cached (300s TTL) |
+| **Dynamic Findings** | Pure Python Calculation | Derived from active slice | Computed on filter change |
+
+---
+
+## 5. Frequently Asked Viva Questions
+
+**Q1: Why did you use Cassandra instead of MySQL or PostgreSQL?**  
+*Answer:* Cassandra is a distributed NoSQL column-family database optimized for high-throughput write scalability and low-latency reads via partition keys. In a nationwide EV charging network streaming thousands of charging updates per minute, Cassandra scales horizontally across clusters with no single point of failure.
+
+**Q2: Why not run queries directly on Spark from the dashboard?**  
+*Answer:* Apache Spark is an offline, batch distributed compute engine. Launching a SparkContext or running a Spark job for every UI click would take 5 to 15 seconds of JVM execution time. Serving pre-aggregated summaries from Apache Cassandra takes under 15 milliseconds.
+
+**Q3: Why is there no geographic map?**  
+*Answer:* The source dataset (*Nature Scientific Data*, 2024 / IEEE PES Task Force) intentionally omits exact latitude and longitude coordinates to preserve EV user privacy. It provides categorical facility classifications (`apartment`, `hotel`, etc.) instead. Fabricating coordinates would compromise research integrity.
+
+**Q4: How does caching improve user experience?**  
+*Answer:* Streamlit reruns the Python script on every user interaction. `@st.cache_data(ttl=300)` caches the Cassandra query results and cleaned Parquet in memory, allowing interactive widget changes (e.g. changing the slider) to update instantly without network roundtrips to Cassandra. The `🔄 Clear Cache & Refresh` button allows forced invalidation.
