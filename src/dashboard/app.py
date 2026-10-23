@@ -9,6 +9,7 @@ Architecture:
 3. Visuals & UX: Dark charcoal/navy theme with electric emerald & cyan accents, Plotly interactive graphics.
 """
 
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -42,6 +43,7 @@ from src.database.cassandra_client import (
     fetch_location_metrics,
     fetch_overall_metrics,
     get_cassandra_session,
+    is_cassandra_available,
     shutdown_cassandra,
 )
 
@@ -124,6 +126,18 @@ st.markdown(
         background-color: #450a0a;
         color: #fca5a5;
         border: 1px solid #dc2626;
+    }
+    .status-pill-cloud {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        background-color: #0c4a6e;
+        color: #38bdf8;
+        border: 1px solid #0284c7;
     }
     .filter-banner {
         background: #0f172a;
@@ -270,7 +284,86 @@ def render_insight_card(title: str, body: str) -> None:
 # -----------------------------------------------------------------------------
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+def load_data_from_csv() -> Tuple[
+    Optional[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    Optional[str],
+]:
+    """Reads pre-aggregated benchmark metrics from committed CSV files in data/processed/analytics/."""
+    analytics_dir = PROJECT_ROOT / "data" / "processed" / "analytics"
+    overall_csv = analytics_dir / "overall_metrics.csv"
+    hourly_csv = analytics_dir / "hourly_demand.csv"
+    charger_csv = analytics_dir / "charger_type_metrics.csv"
+    location_csv = analytics_dir / "top_locations.csv"
+
+    missing = [p.name for p in (overall_csv, hourly_csv, charger_csv, location_csv) if not p.exists()]
+    if missing:
+        return None, [], [], [], f"Missing analytical CSV file(s) in '{analytics_dir}': {', '.join(missing)}"
+
+    try:
+        # 1. Overall metrics
+        with open(overall_csv, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            r = next(reader)
+            overall = {
+                "metric_id": "overall",
+                "total_sessions": int(r["total_sessions"]),
+                "total_demand_kwh": float(r["total_demand_kwh"]),
+                "avg_demand_kwh": float(r["avg_demand_kwh"]),
+                "avg_duration_minutes": float(r["avg_duration_minutes"]),
+                "min_duration_minutes": float(r["min_duration_minutes"]),
+                "max_duration_minutes": float(r["max_duration_minutes"]),
+            }
+
+        # 2. Hourly demand profile
+        with open(hourly_csv, mode="r", encoding="utf-8") as f:
+            hourly = [
+                {
+                    "start_hour": int(row["start_hour"]),
+                    "session_count": int(row["session_count"]),
+                    "total_demand_kwh": float(row["total_demand_kwh"]),
+                    "avg_demand_kwh": float(row["avg_demand_kwh"]),
+                    "avg_duration_minutes": float(row["avg_duration_minutes"]),
+                }
+                for row in csv.DictReader(f)
+            ]
+            hourly.sort(key=lambda x: x["start_hour"])
+
+        # 3. Charger type metrics
+        with open(charger_csv, mode="r", encoding="utf-8") as f:
+            charger_types = [
+                {
+                    "charger_current_type": str(row["charger_current_type"]).strip(),
+                    "session_count": int(row["session_count"]),
+                    "total_demand_kwh": float(row["total_demand_kwh"]),
+                    "avg_demand_kwh": float(row["avg_demand_kwh"]),
+                    "avg_duration_minutes": float(row["avg_duration_minutes"]),
+                }
+                for row in csv.DictReader(f)
+            ]
+            charger_types.sort(key=lambda x: x["charger_current_type"])
+
+        # 4. Location metrics
+        with open(location_csv, mode="r", encoding="utf-8") as f:
+            locations = [
+                {
+                    "location": str(row.get("Location") or row.get("location")).strip(),
+                    "session_count": int(row["session_count"]),
+                    "total_demand_kwh": float(row["total_demand_kwh"]),
+                    "avg_demand_kwh": float(row["avg_demand_kwh"]),
+                    "avg_duration_minutes": float(row["avg_duration_minutes"]),
+                }
+                for row in csv.DictReader(f)
+            ]
+            locations.sort(key=lambda x: x["session_count"], reverse=True)
+
+        return overall, hourly, charger_types, locations, None
+    except Exception as exc:
+        return None, [], [], [], f"Error parsing CSV analytics files: {exc}"
+
+
 def load_data_from_cassandra() -> Tuple[
     Optional[Dict[str, Any]],
     List[Dict[str, Any]],
@@ -280,8 +373,11 @@ def load_data_from_cassandra() -> Tuple[
     str,
 ]:
     """Queries pre-aggregated benchmark metrics directly from Apache Cassandra."""
-    cluster, session = None, None
     timestamp_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    if not is_cassandra_available():
+        return None, [], [], [], "Cassandra host is unreachable on port 9042.", timestamp_str
+
+    cluster, session = None, None
     try:
         cluster, session = get_cassandra_session()
         overall = fetch_overall_metrics(session)
@@ -294,6 +390,35 @@ def load_data_from_cassandra() -> Tuple[
     finally:
         if cluster and session:
             shutdown_cassandra(cluster, session)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_benchmark_data() -> Tuple[
+    Optional[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    str,
+    Optional[str],
+    str,
+]:
+    """
+    Retrieves baseline metrics. Tries Apache Cassandra first.
+    If Cassandra is unavailable (e.g. running on Streamlit Cloud),
+    gracefully falls back to committed pre-aggregated CSV files.
+    """
+    overall, hourly, charger_types, locations, db_error, fetch_ts = load_data_from_cassandra()
+    if not db_error and overall:
+        return overall, hourly, charger_types, locations, "cassandra", None, fetch_ts
+
+    # Fallback to pre-aggregated CSV files
+    csv_overall, csv_hourly, csv_chargers, csv_locations, csv_error = load_data_from_csv()
+    if not csv_error and csv_overall:
+        return csv_overall, csv_hourly, csv_chargers, csv_locations, "csv", None, fetch_ts
+
+    # Both sources unavailable
+    combined_err = f"Cassandra unavailable ({db_error}). CSV fallback unavailable: {csv_error}"
+    return None, [], [], [], "none", combined_err, fetch_ts
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -315,8 +440,8 @@ def load_cleaned_records() -> Optional[pd.DataFrame]:
 
 
 def main():
-    # Retrieve cached data
-    overall_data, hourly_data, charger_type_data, location_data, db_error, fetch_ts = load_data_from_cassandra()
+    # Retrieve cached data (tries Cassandra, falls back to pre-aggregated CSVs on Streamlit Cloud)
+    overall_data, hourly_data, charger_type_data, location_data, data_mode, data_error, fetch_ts = load_benchmark_data()
     session_records_df = load_cleaned_records()
 
     portfolio_total_sessions = overall_data.get("total_sessions", 72108) if overall_data else 72108
@@ -389,18 +514,40 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-        st.markdown(
-            f"""
+        if data_mode == "cassandra":
+            sidebar_status_html = """
             <div style="font-size: 0.76rem; color: #64748b; line-height: 1.5; margin-top: 8px;">
                 <b>Database:</b> Apache Cassandra<br>
                 <b>Keyspace:</b> <code>ev_analytics</code><br>
-                <b>Status:</b> {"<span style='color: #6ee7b7;'>Connected</span>" if not db_error and overall_data else "<span style='color: #fca5a5;'>Disconnected</span>"}
+                <b>Status:</b> <span style='color: #6ee7b7;'>Connected</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """
+        else:
+            sidebar_status_html = """
+            <div style="font-size: 0.76rem; color: #64748b; line-height: 1.5; margin-top: 8px;">
+                <b>Serving Layer:</b> Processed Aggregates (CSV)<br>
+                <b>Mode:</b> <code>Streamlit Cloud / Standalone</code><br>
+                <b>Status:</b> <span style='color: #38bdf8;'>Active</span>
+            </div>
+            """
+        st.markdown(sidebar_status_html, unsafe_allow_html=True)
 
     # Top Application Header Bar
+    if data_mode == "cassandra":
+        header_status_html = """
+        <div><span class='status-pill-connected'>● Connected to Cassandra</span></div>
+        <div style="color: #64748b; font-size: 0.76rem; margin-top: 5px;">
+            Keyspace: <b>ev_analytics</b>
+        </div>
+        """
+    else:
+        header_status_html = """
+        <div><span class='status-pill-cloud'>● Processed Aggregates (Cloud Mode)</span></div>
+        <div style="color: #64748b; font-size: 0.76rem; margin-top: 5px;">
+            Source: <b>data/processed/analytics</b>
+        </div>
+        """
+
     st.markdown(
         f"""
         <div class="app-header-box">
@@ -415,39 +562,23 @@ def main():
                 </div>
             </div>
             <div style="text-align: right;">
-                <div>
-                    {"<span class='status-pill-connected'>● Connected to Cassandra</span>" if not db_error and overall_data else "<span class='status-pill-disconnected'>● Cassandra Disconnected</span>"}
-                </div>
-                <div style="color: #64748b; font-size: 0.76rem; margin-top: 5px;">
-                    Keyspace: <b>ev_analytics</b>
-                </div>
+                {header_status_html}
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Database connectivity error handling
-    if db_error:
+    # Analytical data source availability check
+    if data_mode == "none" or not overall_data or not hourly_data:
         st.error(
-            f"❌ **Failed to connect to Apache Cassandra**: `{db_error}`\n\n"
-            "**Troubleshooting Checklist:**\n"
-            "1. Confirm Cassandra container is running: `docker compose ps`\n"
-            "2. If container is stopped: `docker compose up -d`\n"
-            "3. Verify analytics tables are loaded: `python scripts/load_cassandra.py`\n\n"
-            "*(This dashboard strictly reads from Apache Cassandra and never silently falls back to local CSV files).*"
+            "❌ **Required Analytical Data Source Unavailable**\n\n"
+            f"**Error Details:** `{data_error}`\n\n"
+            "**Actionable Steps to Resolve:**\n"
+            "1. **Local Run with Cassandra:** Start Cassandra with `docker compose up -d` and run `python scripts/load_cassandra.py`.\n"
+            "2. **Streamlit Cloud Deployment:** Verify that analytical CSV files exist in `data/processed/analytics/` (`overall_metrics.csv`, `hourly_demand.csv`, `charger_type_metrics.csv`, `top_locations.csv`)."
         )
-        if st.button("🔄 Retry Connection"):
-            st.cache_data.clear()
-            st.rerun()
-        st.stop()
-
-    if not overall_data or not hourly_data:
-        st.warning(
-            "⚠️ **Connected to Cassandra, but analytics tables are empty.**\n\n"
-            "Please run the data loader to populate tables: `python scripts/load_cassandra.py`"
-        )
-        if st.button("🔄 Refresh Data"):
+        if st.button("🔄 Retry Connection / Refresh"):
             st.cache_data.clear()
             st.rerun()
         st.stop()
@@ -455,7 +586,7 @@ def main():
     # -------------------------------------------------------------------------
     # 5. Filter Evaluation & Exact Metric Computation
     # -------------------------------------------------------------------------
-    if is_default_filter or session_records_df is None:
+    if is_default_filter:
         active_kpis = {
             "has_data": True,
             "total_sessions": overall_data.get("total_sessions", 72108),
@@ -473,8 +604,32 @@ def main():
         active_hourly = hourly_data
         active_chargers = charger_type_data
         active_locations = location_data
-        data_source_label = "Cassandra"
+        data_source_label = "Cassandra" if data_mode == "cassandra" else "Processed Aggregates (CSV)"
         filter_status_text = "All Charging Sessions (No filters applied)"
+    elif session_records_df is None:
+        st.warning(
+            "⚠️ **Interactive Filter Engine Unavailable**: `data/processed/cleaned_charging_records.parquet` "
+            "is not found. Displaying baseline aggregates instead of sliced subsets."
+        )
+        active_kpis = {
+            "has_data": True,
+            "total_sessions": overall_data.get("total_sessions", 72108),
+            "total_demand_kwh": overall_data.get("total_demand_kwh", 1267066.08),
+            "avg_demand_kwh": overall_data.get("avg_demand_kwh", 17.57),
+            "avg_duration_minutes": overall_data.get("avg_duration_minutes", 152.73),
+            "min_duration_minutes": overall_data.get("min_duration_minutes", 1.0),
+            "max_duration_minutes": overall_data.get("max_duration_minutes", 1573.0),
+            "ac_sessions": next((r["session_count"] for r in charger_type_data if r["charger_current_type"] == "AC"), 57398),
+            "dc_sessions": next((r["session_count"] for r in charger_type_data if r["charger_current_type"] == "DC"), 14710),
+            "ac_share_pct": 79.6,
+            "dc_share_pct": 20.4,
+            "portfolio_share_pct": 100.0,
+        }
+        active_hourly = hourly_data
+        active_chargers = charger_type_data
+        active_locations = location_data
+        data_source_label = "Baseline Aggregates (Parquet Missing)"
+        filter_status_text = "Filter applied, but Parquet dataset missing — showing full dataset"
     else:
         filtered_df = filter_records(
             session_records_df,
@@ -486,7 +641,7 @@ def main():
         active_hourly = aggregate_hourly_from_df(filtered_df)
         active_chargers = aggregate_chargers_from_df(filtered_df)
         active_locations = aggregate_locations_from_df(filtered_df)
-        data_source_label = "Filtered Data"
+        data_source_label = "Filtered Data (Parquet)"
 
         loc_desc = sel_location.title() if sel_location != "All" else "All Locations"
         chr_desc = sel_charger_type if sel_charger_type != "All" else "All Chargers"

@@ -1,0 +1,3 @@
+charger_current_type,session_count,total_demand_kwh,avg_demand_kwh,avg_duration_minutes
+AC,57398,984205.3,17.15,182.49
+DC,14710,282860.78,19.23,36.59

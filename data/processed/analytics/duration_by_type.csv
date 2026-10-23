@@ -1,0 +1,3 @@
+charger_current_type,avg_duration_minutes,min_duration_minutes,max_duration_minutes
+AC,182.49,1.0,1573.0
+DC,36.59,1.0,1413.0

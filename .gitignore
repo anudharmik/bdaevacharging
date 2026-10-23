@@ -21,11 +21,15 @@ htmlcov/
 *.pem
 *.key
 
-# Data directories (keep directory structure via .gitkeep, exclude heavy datasets)
+# Data directories (keep directory structure via .gitkeep, exclude heavy raw datasets)
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/analytics/
+!data/processed/analytics/*
+!data/processed/cleaned_charging_records.parquet/
+!data/processed/cleaned_charging_records.parquet/*
 
 # Apache Spark & Hadoop local runtime artifacts
 spark-warehouse/

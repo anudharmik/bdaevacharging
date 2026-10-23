@@ -1,0 +1,11 @@
+Location,session_count,total_demand_kwh,avg_demand_kwh,avg_duration_minutes
+public area,13952,251898.51,18.05,134.34
+apartment,13913,261764.0,18.81,206.7
+resort,8717,152290.74,17.47,173.66
+hotel,8455,125621.36,14.86,149.31
+company,7527,122702.4,16.3,151.59
+public institution,6961,122169.57,17.55,121.31
+public parking lot,3364,58332.69,17.34,50.6
+market,2958,49319.76,16.67,98.43
+restaurant,2216,39580.65,17.86,157.0
+camping,1620,41581.71,25.67,245.14

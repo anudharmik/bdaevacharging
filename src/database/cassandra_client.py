@@ -14,6 +14,7 @@ Architecture:
 """
 
 import os
+import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -76,6 +77,24 @@ def get_cassandra_session(
         session.set_keyspace(keyspace)
 
     return cluster, session
+
+
+def is_cassandra_available(
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    timeout_sec: float = 1.0,
+) -> bool:
+    """
+    Performs a fast TCP socket check to verify if the Cassandra native transport port is open.
+    Prevents prolonged connection hangs when Cassandra is not running (e.g. on Streamlit Cloud).
+    """
+    target_host = host or DEFAULT_HOST
+    target_port = port or DEFAULT_PORT
+    try:
+        with socket.create_connection((target_host, target_port), timeout=timeout_sec):
+            return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
 
 
 def shutdown_cassandra(cluster: Optional[Cluster], session: Optional[Session]) -> None:
