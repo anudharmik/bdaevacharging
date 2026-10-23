@@ -18,8 +18,16 @@ import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from cassandra.auth import PlainTextAuthProvider
-from cassandra.cluster import Cluster, Session
+try:
+    from cassandra.auth import PlainTextAuthProvider
+    from cassandra.cluster import Cluster, Session
+
+    CASSANDRA_DRIVER_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    PlainTextAuthProvider = None
+    Cluster = Any  # type: ignore[assignment, misc]
+    Session = Any  # type: ignore[assignment, misc]
+    CASSANDRA_DRIVER_AVAILABLE = False
 
 # Load environment configuration if python-dotenv is available
 try:
@@ -57,6 +65,11 @@ def get_cassandra_session(
     Establishes connection to the Apache Cassandra cluster via native transport (port 9042).
     Returns: (cluster, session) tuple.
     """
+    if not CASSANDRA_DRIVER_AVAILABLE:
+        raise RuntimeError(
+            "The 'cassandra-driver' package is not installed or not supported in this Python environment."
+        )
+
     target_host = host or DEFAULT_HOST
     target_port = port or DEFAULT_PORT
 
@@ -88,6 +101,8 @@ def is_cassandra_available(
     Performs a fast TCP socket check to verify if the Cassandra native transport port is open.
     Prevents prolonged connection hangs when Cassandra is not running (e.g. on Streamlit Cloud).
     """
+    if not CASSANDRA_DRIVER_AVAILABLE:
+        return False
     target_host = host or DEFAULT_HOST
     target_port = port or DEFAULT_PORT
     try:
@@ -99,9 +114,9 @@ def is_cassandra_available(
 
 def shutdown_cassandra(cluster: Optional[Cluster], session: Optional[Session]) -> None:
     """Closes session and cluster connection cleanly to free network sockets."""
-    if session and not session.is_shutdown:
+    if session and hasattr(session, "is_shutdown") and not session.is_shutdown:
         session.shutdown()
-    if cluster and not cluster.is_shutdown:
+    if cluster and hasattr(cluster, "is_shutdown") and not cluster.is_shutdown:
         cluster.shutdown()
 
 

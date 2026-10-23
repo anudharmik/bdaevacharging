@@ -9,6 +9,7 @@ pyspark==3.5.1
 
 # Apache Cassandra Client Driver
 cassandra-driver==3.29.2
+pyasyncore>=1.0.2; python_version >= '3.12'
 
 # Data Analysis and Formats
 pandas==2.2.2
