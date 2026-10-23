@@ -872,7 +872,8 @@ def main():
                 color=loc_metric_col,
                 color_continuous_scale=["#0e7490", "#06b6d4", "#10b981"],
             )
-            fig_loc.update_layout(coloraxis_showscale=False, yaxis=dict(showgrid=False), **PLOTLY_DARK_THEME)
+            fig_loc.update_layout(coloraxis_showscale=False, **PLOTLY_DARK_THEME)
+            fig_loc.update_yaxes(showgrid=False)
             fig_loc.update_traces(hovertemplate="<b>Facility:</b> %{y}<br>" + hover_template + "<extra></extra>")
             st.plotly_chart(fig_loc, use_container_width=True)
 
